@@ -1,0 +1,25 @@
+{
+  "name": "buildtrack-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BuildTrack platform: login, dashboard, task management, timeline, and audit tracking for the Montego Venue schedule.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "migrate-tasks": "node scripts/migrate-tasks.mjs",
+    "invite-user": "node scripts/invite-user.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "dotenv": "^16.4.5",
+    "vite": "^5.4.6"
+  }
+}
