@@ -109,15 +109,20 @@ export default function TaskDetail() {
     }
 
     // Cascade re-triggers on either a completion or a manual date edit — both can move
-    // downstream tasks. This task's own just-saved values are treated as authoritative and
-    // won't be overwritten by the recompute; only tasks affected as a side effect move.
+    // downstream tasks. This task's own just-saved values are authoritative and are never
+    // recomputed; only its actual downstream descendants are eligible to move, seeded from
+    // its direct dependents. Nothing outside that chain is touched.
     const shouldReschedule =
       changedFields.includes("start_date") ||
       changedFields.includes("due_date") ||
       (changedFields.includes("status") && form.status === "Complete");
 
-    if (shouldReschedule) {
-      await recomputeProjectSchedule(projectId, organizationId, id);
+    if (shouldReschedule && dependents.length > 0) {
+      await recomputeProjectSchedule(
+        projectId,
+        organizationId,
+        dependents.map((d) => d.id)
+      );
     }
 
     setSaving(false);
@@ -169,8 +174,9 @@ export default function TaskDetail() {
           "(none)",
         reason: "Predecessors edited on task detail page",
       });
-      // Changing the dependency graph can change the critical path — reflow the schedule.
-      await recomputeProjectSchedule(projectId, organizationId, id);
+      // Changing this task's own predecessor set can change ITS anchor, so recompute starts
+      // at this task itself and flows only to its actual downstream descendants.
+      await recomputeProjectSchedule(projectId, organizationId, [id]);
     }
 
     setSavingPreds(false);
@@ -194,7 +200,16 @@ export default function TaskDetail() {
       setDeleting(false);
       return;
     }
-    await recomputeProjectSchedule(projectId, organizationId, null);
+    // `dependents` was captured on page load, before this delete — the task_predecessors rows
+    // pointing at this task are gone the instant it's deleted, so this is the only chance to
+    // know who was actually depending on it.
+    if (dependents.length > 0) {
+      await recomputeProjectSchedule(
+        projectId,
+        organizationId,
+        dependents.map((d) => d.id)
+      );
+    }
     navigate(`/projects/${projectId}`);
   }
 

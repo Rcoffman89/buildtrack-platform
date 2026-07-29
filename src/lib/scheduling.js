@@ -17,23 +17,34 @@ function daysBetween(a, b) {
 
 /**
  * Real forward-pass critical-path scheduling — replaces the old "only ever push a dependent
- * later, don't wait for every predecessor" simplification. For every task (in topological
- * order), its earliest possible start is the MAX finish date across ALL of its predecessors
- * (using actual_finish_date for Complete predecessors, planned due_date otherwise). This can
- * pull a task's dates EARLIER than previously planned if predecessors finish ahead of
- * schedule, same as real project-management critical-path math.
+ * later, don't wait for every predecessor" simplification. For every task in the downstream
+ * closure (see below), its earliest possible start is the MAX finish date across ALL of its
+ * predecessors (using actual_finish_date for Complete predecessors, planned due_date
+ * otherwise). This can pull a task's dates EARLIER than previously planned if predecessors
+ * finish ahead of schedule, same as real project-management critical-path math.
+ *
+ * Scoped to descendants only: `seedTaskIds` is the set of tasks to treat as "freshly dirty" —
+ * recompute walks forward from there (their dependents, and *their* dependents, transitively)
+ * and only ever touches tasks in that downstream closure. Everything outside it keeps its
+ * current stored dates untouched and is used as a trusted, read-only anchor input for anything
+ * that does get recomputed. This deliberately does NOT "true up" the whole project to strict
+ * critical-path math on every edit — only what's actually downstream of what changed moves.
+ *   - Editing a task's own dates: pass its direct dependents as the seed (the edited task's
+ *     just-typed values are authoritative, so it's excluded, but what depends on it reflows).
+ *   - Editing a task's predecessors: pass [that task's own id] — its anchor may have changed,
+ *     so it (and everything downstream of it) reflows.
+ *   - Deleting a task: pass its former direct dependents, captured *before* deletion (the
+ *     predecessor rows pointing at it are cascade-deleted the moment the task is gone).
  *
  * Complete tasks are frozen — their dates are historical fact and never recomputed, though
  * they still anchor their own dependents via actual_finish_date.
  *
- * directlyEditedTaskId is skipped in the recompute (the user's just-typed values for that one
- * task are authoritative, not to be silently overwritten a moment after they entered them) —
- * but its new values still feed forward into everything downstream.
- *
  * Every task that ends up moved as a *side effect* gets an audit_log entry and a notification
  * — cascading never silently overwrites a date with no trace.
  */
-export async function recomputeProjectSchedule(projectId, organizationId, directlyEditedTaskId = null) {
+export async function recomputeProjectSchedule(projectId, organizationId, seedTaskIds) {
+  if (!seedTaskIds || seedTaskIds.length === 0) return [];
+
   const { data: tasks, error: taskError } = await supabase
     .from("tasks")
     .select("id,title,status,start_date,due_date,actual_finish_date")
@@ -53,20 +64,21 @@ export async function recomputeProjectSchedule(projectId, organizationId, direct
   const inDegree = new Map(tasks.map((t) => [t.id, 0]));
 
   for (const e of edges) {
-    predecessorsOf.get(e.task_id).push(e.predecessor_id);
-    dependentsOf.get(e.predecessor_id).push(e.task_id);
-    inDegree.set(e.task_id, inDegree.get(e.task_id) + 1);
+    predecessorsOf.get(e.task_id)?.push(e.predecessor_id);
+    dependentsOf.get(e.predecessor_id)?.push(e.task_id);
+    if (inDegree.has(e.task_id)) inDegree.set(e.task_id, inDegree.get(e.task_id) + 1);
   }
 
-  // Kahn's algorithm — also doubles as cycle detection: any task left with remaining
-  // in-degree > 0 after the queue drains is part of a cycle and gets skipped, not crashed on.
+  // Kahn's algorithm over the WHOLE graph — still needed so the (scoped) recompute below
+  // happens in dependency order. Also doubles as cycle detection: any task left with
+  // remaining in-degree > 0 after the queue drains is part of a cycle and gets skipped.
   const queue = tasks.filter((t) => inDegree.get(t.id) === 0).map((t) => t.id);
   const order = [];
   const remaining = new Map(inDegree);
   while (queue.length > 0) {
     const id = queue.shift();
     order.push(id);
-    for (const dep of dependentsOf.get(id)) {
+    for (const dep of dependentsOf.get(id) ?? []) {
       remaining.set(dep, remaining.get(dep) - 1);
       if (remaining.get(dep) === 0) queue.push(dep);
     }
@@ -75,18 +87,34 @@ export async function recomputeProjectSchedule(projectId, organizationId, direct
     console.error("Predecessor cycle detected in this project — tasks in the cycle were skipped during rescheduling.");
   }
 
+  // Downstream closure of the seed set: only these tasks are eligible to move. BFS forward
+  // through "depends on" edges, starting from the seeds and expanding to their dependents.
+  const dirty = new Set();
+  const bfsQueue = [...seedTaskIds];
+  while (bfsQueue.length > 0) {
+    const id = bfsQueue.shift();
+    if (dirty.has(id) || !byId.has(id)) continue;
+    dirty.add(id);
+    for (const dep of dependentsOf.get(id) ?? []) {
+      if (!dirty.has(dep)) bfsQueue.push(dep);
+    }
+  }
+
   const changes = [];
 
   for (const id of order) {
+    if (!dirty.has(id)) continue; // outside the downstream closure — never touched
+
     const task = byId.get(id);
     if (task.status === "Complete") continue;
-    if (id === directlyEditedTaskId) continue;
 
-    const preds = predecessorsOf.get(id);
+    const preds = predecessorsOf.get(id) ?? [];
     if (preds.length === 0) continue;
 
     let anchor = null;
     for (const predId of preds) {
+      // Predecessors outside the dirty set are trusted as-is — their current stored dates
+      // are the anchor input, not recomputed, even if they aren't themselves "true" CPM.
       const pred = byId.get(predId);
       if (!pred) continue;
       const predFinish = pred.status === "Complete" ? pred.actual_finish_date || pred.due_date : pred.due_date;
