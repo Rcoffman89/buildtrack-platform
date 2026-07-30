@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient.js";
 
 export default function TaskCreateForm({ projectId, existingTasks, onCreated, onCancel }) {
@@ -6,9 +6,19 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
   const [category, setCategory] = useState("");
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [vendorId, setVendorId] = useState("");
+  const [vendors, setVendors] = useState([]);
   const [predIds, setPredIds] = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    supabase
+      .from("vendors")
+      .select("id,name,trade")
+      .order("name")
+      .then(({ data }) => setVendors(data ?? []));
+  }, []);
 
   function togglePred(taskId) {
     setPredIds((prev) => {
@@ -32,6 +42,7 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
         category: category || null,
         start_date: startDate || null,
         due_date: dueDate || null,
+        vendor_id: vendorId || null,
       })
       .select("id")
       .single();
@@ -53,6 +64,7 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
     setCategory("");
     setStartDate("");
     setDueDate("");
+    setVendorId("");
     setPredIds(new Set());
     onCreated();
   }
@@ -70,6 +82,16 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
 
       <label htmlFor="due">Due date</label>
       <input id="due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+
+      <label htmlFor="vendor">Vendor</label>
+      <select id="vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+        <option value="">— None —</option>
+        {vendors.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.name} ({v.trade})
+          </option>
+        ))}
+      </select>
 
       {existingTasks && existingTasks.length > 0 && (
         <>

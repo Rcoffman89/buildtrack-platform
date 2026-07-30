@@ -16,6 +16,7 @@ export default function TaskDetail() {
   const [predecessors, setPredecessors] = useState([]);
   const [dependents, setDependents] = useState([]);
   const [otherTasks, setOtherTasks] = useState([]);
+  const [vendors, setVendors] = useState([]);
   const [selectedPredIds, setSelectedPredIds] = useState(new Set());
   const [form, setForm] = useState(null);
   const [error, setError] = useState("");
@@ -68,6 +69,9 @@ export default function TaskDetail() {
       .order("title");
     const dependentIds = new Set(deps.map((d) => d.id));
     setOtherTasks((allTasks ?? []).filter((t) => !dependentIds.has(t.id)));
+
+    const { data: vendorData } = await supabase.from("vendors").select("id,name,trade").order("name");
+    setVendors(vendorData ?? []);
   }
 
   async function handleSave(e) {
@@ -83,6 +87,7 @@ export default function TaskDetail() {
         status: form.status,
         percent_complete: form.percent_complete,
         assigned_to: form.assigned_to,
+        vendor_id: form.vendor_id,
         notes: form.notes,
         start_date: form.start_date,
         due_date: form.due_date,
@@ -96,7 +101,7 @@ export default function TaskDetail() {
     }
 
     for (const field of changedFields) {
-      if (["status", "percent_complete", "assigned_to", "notes", "start_date", "due_date"].includes(field)) {
+      if (["status", "percent_complete", "assigned_to", "vendor_id", "notes", "start_date", "due_date"].includes(field)) {
         await logAudit({
           taskId: id,
           organizationId,
@@ -303,6 +308,20 @@ export default function TaskDetail() {
           value={form.assigned_to || ""}
           onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
         />
+
+        <label htmlFor="vendor">Vendor</label>
+        <select
+          id="vendor"
+          value={form.vendor_id || ""}
+          onChange={(e) => setForm({ ...form, vendor_id: e.target.value || null })}
+        >
+          <option value="">— None —</option>
+          {vendors.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name} ({v.trade})
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="start">Start date</label>
         <input

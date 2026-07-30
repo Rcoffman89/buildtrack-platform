@@ -12,6 +12,7 @@ import AuditLog from "./pages/AuditLog.jsx";
 import Timeline from "./pages/Timeline.jsx";
 import AdminUsers from "./pages/AdminUsers.jsx";
 import WeeklyBriefing from "./pages/WeeklyBriefing.jsx";
+import Vendors from "./pages/Vendors.jsx";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           >
             <Route index element={<Projects />} />
             <Route path="briefing" element={<WeeklyBriefing />} />
+            <Route path="vendors" element={<Vendors />} />
             <Route path="admin/users" element={<AdminUsers />} />
             <Route path="projects/:projectId" element={<ProjectLayout />}>
               <Route index element={<Dashboard />} />
