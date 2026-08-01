@@ -225,6 +225,21 @@ label {
   font-variant-numeric: tabular-nums;
 }
 
+.budget-card {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.budget-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+}
+
 .dash-filters {
   display: flex;
   gap: 8px;

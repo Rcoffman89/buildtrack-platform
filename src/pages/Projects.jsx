@@ -27,6 +27,7 @@ export default function Projects() {
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [targetBudget, setTargetBudget] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [tileFilter, setTileFilter] = useState(null); // null | 'active' | 'onTrack' | 'atRisk' | 'openItems'
   const [openItems, setOpenItems] = useState(null);
@@ -89,6 +90,7 @@ export default function Projects() {
       name,
       client_name: clientName || null,
       target_date: targetDate || null,
+      target_budget: targetBudget || null,
     });
     setSubmitting(false);
     if (error) {
@@ -98,6 +100,7 @@ export default function Projects() {
     setName("");
     setClientName("");
     setTargetDate("");
+    setTargetBudget("");
     setShowForm(false);
     load();
   }
@@ -169,6 +172,16 @@ export default function Projects() {
 
           <label htmlFor="ptarget">Target completion date</label>
           <input id="ptarget" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+
+          <label htmlFor="pbudget">Target budget ($)</label>
+          <input
+            id="pbudget"
+            type="number"
+            min="0"
+            step="0.01"
+            value={targetBudget}
+            onChange={(e) => setTargetBudget(e.target.value)}
+          />
 
           <button type="submit" disabled={submitting}>
             {submitting ? "Creating…" : "Create project"}

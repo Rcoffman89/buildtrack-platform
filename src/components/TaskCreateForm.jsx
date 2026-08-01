@@ -8,6 +8,7 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
   const [dueDate, setDueDate] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [vendors, setVendors] = useState([]);
+  const [estimatedCost, setEstimatedCost] = useState("");
   const [predIds, setPredIds] = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -43,6 +44,7 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
         start_date: startDate || null,
         due_date: dueDate || null,
         vendor_id: vendorId || null,
+        estimated_cost: estimatedCost || null,
       })
       .select("id")
       .single();
@@ -65,6 +67,7 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
     setStartDate("");
     setDueDate("");
     setVendorId("");
+    setEstimatedCost("");
     setPredIds(new Set());
     onCreated();
   }
@@ -92,6 +95,16 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
           </option>
         ))}
       </select>
+
+      <label htmlFor="estimated-cost">Estimated cost ($)</label>
+      <input
+        id="estimated-cost"
+        type="number"
+        min="0"
+        step="0.01"
+        value={estimatedCost}
+        onChange={(e) => setEstimatedCost(e.target.value)}
+      />
 
       {existingTasks && existingTasks.length > 0 && (
         <>

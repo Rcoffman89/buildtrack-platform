@@ -30,6 +30,7 @@ export default function ProjectLayout() {
           Dashboard
         </NavLink>
         <NavLink to={`/projects/${projectId}/timeline`}>Timeline</NavLink>
+        <NavLink to={`/projects/${projectId}/invoices`}>Invoices</NavLink>
         <NavLink to={`/projects/${projectId}/audit`}>Audit Log</NavLink>
         <NavLink to={`/projects/${projectId}/briefing`}>Briefing</NavLink>
       </nav>

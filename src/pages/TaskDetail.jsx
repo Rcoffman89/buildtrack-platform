@@ -17,6 +17,7 @@ export default function TaskDetail() {
   const [dependents, setDependents] = useState([]);
   const [otherTasks, setOtherTasks] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [selectedPredIds, setSelectedPredIds] = useState(new Set());
   const [form, setForm] = useState(null);
   const [error, setError] = useState("");
@@ -72,6 +73,13 @@ export default function TaskDetail() {
 
     const { data: vendorData } = await supabase.from("vendors").select("id,name,trade").order("name");
     setVendors(vendorData ?? []);
+
+    const { data: invoiceData } = await supabase
+      .from("invoices")
+      .select("id,amount,invoice_date,description,vendors(name)")
+      .eq("task_id", id)
+      .order("invoice_date", { ascending: false });
+    setInvoices(invoiceData ?? []);
   }
 
   async function handleSave(e) {
@@ -88,6 +96,7 @@ export default function TaskDetail() {
         percent_complete: form.percent_complete,
         assigned_to: form.assigned_to,
         vendor_id: form.vendor_id,
+        estimated_cost: form.estimated_cost,
         notes: form.notes,
         start_date: form.start_date,
         due_date: form.due_date,
@@ -101,7 +110,11 @@ export default function TaskDetail() {
     }
 
     for (const field of changedFields) {
-      if (["status", "percent_complete", "assigned_to", "vendor_id", "notes", "start_date", "due_date"].includes(field)) {
+      if (
+        ["status", "percent_complete", "assigned_to", "vendor_id", "estimated_cost", "notes", "start_date", "due_date"].includes(
+          field
+        )
+      ) {
         await logAudit({
           taskId: id,
           organizationId,
@@ -260,6 +273,26 @@ export default function TaskDetail() {
       )}
 
       <div className="predecessors">
+        <h3>Invoices</h3>
+        {invoices.length === 0 && <p className="task-meta">No invoices linked to this task yet.</p>}
+        {invoices.length > 0 && (
+          <ul>
+            {invoices.map((inv) => (
+              <li key={inv.id}>
+                ${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {inv.vendors?.name ? ` — ${inv.vendors.name}` : ""}
+                {inv.invoice_date ? ` — ${inv.invoice_date}` : ""}
+                {inv.description ? ` — ${inv.description}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link to={`/projects/${projectId}/invoices?task=${id}`} className="link-btn">
+          + Add invoice for this task
+        </Link>
+      </div>
+
+      <div className="predecessors">
         <h3>Predecessors</h3>
         {otherTasks.length === 0 && <p className="task-meta">No other tasks in this project to depend on.</p>}
         {otherTasks.length > 0 && (
@@ -322,6 +355,16 @@ export default function TaskDetail() {
             </option>
           ))}
         </select>
+
+        <label htmlFor="estimated-cost">Estimated cost ($)</label>
+        <input
+          id="estimated-cost"
+          type="number"
+          min="0"
+          step="0.01"
+          value={form.estimated_cost ?? ""}
+          onChange={(e) => setForm({ ...form, estimated_cost: e.target.value || null })}
+        />
 
         <label htmlFor="start">Start date</label>
         <input
