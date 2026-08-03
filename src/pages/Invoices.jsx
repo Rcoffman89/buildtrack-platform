@@ -28,6 +28,7 @@ export default function Invoices() {
   const [amount, setAmount] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState({});
@@ -45,7 +46,7 @@ export default function Invoices() {
     if (error) setError(error.message);
     else setInvoices(data);
 
-    const { data: taskData } = await supabase.from("tasks").select("id,title").eq("project_id", projectId).order("title");
+    const { data: taskData } = await supabase.from("tasks").select("id,title,category").eq("project_id", projectId).order("title");
     setTasks(taskData ?? []);
 
     const { data: vendorData } = await supabase.from("vendors").select("id,name,trade").order("name");
@@ -83,6 +84,7 @@ export default function Invoices() {
       amount,
       invoice_date: invoiceDate || null,
       description: description || null,
+      category: category || null,
       file_path: filePath,
     });
 
@@ -96,8 +98,18 @@ export default function Invoices() {
     setAmount("");
     setInvoiceDate("");
     setDescription("");
+    setCategory("");
     setFile(null);
     load();
+  }
+
+  function handleTaskChange(newTaskId) {
+    setTaskId(newTaskId);
+    // Auto-fill category from the selected task as a convenience default — it's copied onto
+    // the invoice as its own independent value, not derived live, so editing the task's
+    // category later never rewrites this invoice's recorded category.
+    const task = tasks.find((t) => t.id === newTaskId);
+    setCategory(task?.category ?? "");
   }
 
   async function handleView(invoice) {
@@ -110,7 +122,17 @@ export default function Invoices() {
   }
 
   function startEdit(invoice) {
-    setEditing({ ...editing, [invoice.id]: { task_id: invoice.task_id || "", vendor_id: invoice.vendor_id || "", amount: invoice.amount, invoice_date: invoice.invoice_date || "", description: invoice.description || "" } });
+    setEditing({
+      ...editing,
+      [invoice.id]: {
+        task_id: invoice.task_id || "",
+        vendor_id: invoice.vendor_id || "",
+        amount: invoice.amount,
+        invoice_date: invoice.invoice_date || "",
+        description: invoice.description || "",
+        category: invoice.category || "",
+      },
+    });
   }
 
   function cancelEdit(id) {
@@ -133,6 +155,7 @@ export default function Invoices() {
         amount: draft.amount,
         invoice_date: draft.invoice_date || null,
         description: draft.description || null,
+        category: draft.category || null,
       })
       .eq("id", id);
     if (error) {
@@ -163,7 +186,7 @@ export default function Invoices() {
         inv.invoice_date ?? "",
         projectName,
         inv.vendors?.name ?? "",
-        inv.tasks?.category ?? "",
+        inv.category ?? "",
         (trade && glMappings[trade]) || "",
         inv.description ?? "",
         Number(inv.amount).toFixed(2),
@@ -200,7 +223,7 @@ export default function Invoices() {
 
       <form onSubmit={handleCreate} className="task-form" style={{ marginBottom: 28 }}>
         <label htmlFor="inv-task">Task (optional)</label>
-        <select id="inv-task" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+        <select id="inv-task" value={taskId} onChange={(e) => handleTaskChange(e.target.value)}>
           <option value="">— Project-level, no specific task —</option>
           {tasks.map((t) => (
             <option key={t.id} value={t.id}>
@@ -208,6 +231,14 @@ export default function Invoices() {
             </option>
           ))}
         </select>
+
+        <label htmlFor="inv-category">Category</label>
+        <input
+          id="inv-category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="e.g. Design, Approvals, Construction"
+        />
 
         <label htmlFor="inv-vendor">Vendor (optional)</label>
         <select id="inv-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
@@ -277,6 +308,7 @@ export default function Invoices() {
               <th>Amount</th>
               <th>Vendor</th>
               <th>Task</th>
+              <th>Category</th>
               <th>Description</th>
               <th>File</th>
               <th></th>
@@ -327,6 +359,13 @@ export default function Invoices() {
                     </td>
                     <td>
                       <input
+                        value={draft.category}
+                        onChange={(e) => updateEditField(inv.id, "category", e.target.value)}
+                        style={{ width: 100 }}
+                      />
+                    </td>
+                    <td>
+                      <input
                         value={draft.description}
                         onChange={(e) => updateEditField(inv.id, "description", e.target.value)}
                       />
@@ -355,6 +394,7 @@ export default function Invoices() {
                   <td>${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                   <td>{inv.vendors?.name ?? "—"}</td>
                   <td>{inv.tasks?.title ?? "—"}</td>
+                  <td>{inv.category ?? "—"}</td>
                   <td>{inv.description}</td>
                   <td>
                     {inv.file_path ? (

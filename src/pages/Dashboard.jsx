@@ -18,6 +18,10 @@ export default function Dashboard() {
   const [actualCost, setActualCost] = useState(0);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState("");
+  const [categoryTargets, setCategoryTargets] = useState({});
+  const [categoryActuals, setCategoryActuals] = useState({});
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryInput, setCategoryInput] = useState("");
 
   useEffect(() => {
     load();
@@ -35,8 +39,21 @@ export default function Dashboard() {
     const { data: projectData } = await supabase.from("projects").select("target_budget").eq("id", projectId).single();
     setTargetBudget(projectData?.target_budget ?? null);
 
-    const { data: invoiceData } = await supabase.from("invoices").select("amount").eq("project_id", projectId);
+    const { data: invoiceData } = await supabase.from("invoices").select("amount,category").eq("project_id", projectId);
     setActualCost((invoiceData ?? []).reduce((sum, inv) => sum + Number(inv.amount), 0));
+
+    const actuals = {};
+    for (const inv of invoiceData ?? []) {
+      const cat = inv.category || "Uncategorized";
+      actuals[cat] = (actuals[cat] || 0) + Number(inv.amount);
+    }
+    setCategoryActuals(actuals);
+
+    const { data: categoryBudgetData } = await supabase
+      .from("project_category_budgets")
+      .select("category,target_amount")
+      .eq("project_id", projectId);
+    setCategoryTargets(Object.fromEntries((categoryBudgetData ?? []).map((c) => [c.category, c.target_amount])));
   }
 
   async function handleSaveBudget(e) {
@@ -50,6 +67,30 @@ export default function Dashboard() {
     load();
   }
 
+  async function handleSaveCategoryTarget(category) {
+    const value = (categoryInput || "").trim();
+
+    let result;
+    if (!value) {
+      result = await supabase
+        .from("project_category_budgets")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("category", category);
+    } else {
+      result = await supabase
+        .from("project_category_budgets")
+        .upsert({ project_id: projectId, category, target_amount: value }, { onConflict: "project_id,category" });
+    }
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setEditingCategory(null);
+    load();
+  }
+
   const counts = tasks
     ? tasks.reduce((acc, t) => {
         acc[t.status] = (acc[t.status] || 0) + 1;
@@ -58,6 +99,8 @@ export default function Dashboard() {
     : {};
 
   const visible = tasks?.filter((t) => filter === "All" || t.status === filter) ?? [];
+
+  const categoryNames = [...new Set([...Object.keys(categoryTargets), ...Object.keys(categoryActuals)])].sort();
 
   return (
     <div>
@@ -139,6 +182,82 @@ export default function Dashboard() {
           </p>
         )}
       </div>
+
+      {categoryNames.length > 0 && (
+        <table className="task-table" style={{ marginBottom: 20 }}>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Target</th>
+              <th>Actual</th>
+              <th style={{ minWidth: 140 }}></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {categoryNames.map((cat) => {
+              const target = categoryTargets[cat];
+              const actual = categoryActuals[cat] || 0;
+              const pct = target ? Math.min((actual / Number(target)) * 100, 100) : 0;
+              const over = target && actual > Number(target);
+              return (
+                <tr key={cat}>
+                  <td>{cat}</td>
+                  <td>
+                    {editingCategory === cat ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={categoryInput}
+                        onChange={(e) => setCategoryInput(e.target.value)}
+                        style={{ width: 100 }}
+                        autoFocus
+                      />
+                    ) : target ? (
+                      `$${Number(target).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td>${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                  <td>
+                    {target && (
+                      <div className="progress-track">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${pct}%`, background: over ? "var(--blocked-fg)" : undefined }}
+                        />
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {isAdmin &&
+                      (editingCategory === cat ? (
+                        <>
+                          <button onClick={() => handleSaveCategoryTarget(cat)}>Save</button>
+                          <button onClick={() => setEditingCategory(null)} style={{ marginLeft: 6 }}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="link-btn"
+                          onClick={() => {
+                            setCategoryInput(target ?? "");
+                            setEditingCategory(cat);
+                          }}
+                        >
+                          {target ? "Edit" : "Set target"}
+                        </button>
+                      ))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
 
       {showForm && (
         <TaskCreateForm
