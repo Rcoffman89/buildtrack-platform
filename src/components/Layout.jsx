@@ -15,6 +15,7 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/briefing">Weekly Briefing</NavLink>
           <NavLink to="/vendors">Vendors</NavLink>
+          <NavLink to="/gl-codes">GL Codes</NavLink>
           {isAdmin && <NavLink to="/admin/users">Manage Users</NavLink>}
         </nav>
         <div className="app-nav-user">

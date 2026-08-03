@@ -14,6 +14,7 @@ import AdminUsers from "./pages/AdminUsers.jsx";
 import WeeklyBriefing from "./pages/WeeklyBriefing.jsx";
 import Vendors from "./pages/Vendors.jsx";
 import Invoices from "./pages/Invoices.jsx";
+import GlCodes from "./pages/GlCodes.jsx";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="briefing" element={<WeeklyBriefing />} />
             <Route path="vendors" element={<Vendors />} />
             <Route path="admin/users" element={<AdminUsers />} />
+            <Route path="gl-codes" element={<GlCodes />} />
             <Route path="projects/:projectId" element={<ProjectLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="tasks/:id" element={<TaskDetail />} />

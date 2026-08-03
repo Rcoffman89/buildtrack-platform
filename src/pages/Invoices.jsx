@@ -16,7 +16,12 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [projectName, setProjectName] = useState("");
+  const [glMappings, setGlMappings] = useState({});
   const [error, setError] = useState("");
+
+  const [exportStart, setExportStart] = useState("");
+  const [exportEnd, setExportEnd] = useState("");
 
   const [taskId, setTaskId] = useState(preselectedTaskId);
   const [vendorId, setVendorId] = useState("");
@@ -34,7 +39,7 @@ export default function Invoices() {
   async function load() {
     const { data, error } = await supabase
       .from("invoices")
-      .select("*, tasks(title), vendors(name)")
+      .select("*, tasks(title,category), vendors(name,trade)")
       .eq("project_id", projectId)
       .order("invoice_date", { ascending: false });
     if (error) setError(error.message);
@@ -45,6 +50,12 @@ export default function Invoices() {
 
     const { data: vendorData } = await supabase.from("vendors").select("id,name,trade").order("name");
     setVendors(vendorData ?? []);
+
+    const { data: projectData } = await supabase.from("projects").select("name").eq("id", projectId).single();
+    setProjectName(projectData?.name ?? "");
+
+    const { data: glData } = await supabase.from("gl_mappings").select("vendor_trade,gl_code");
+    setGlMappings(Object.fromEntries((glData ?? []).map((g) => [g.vendor_trade, g.gl_code])));
   }
 
   async function handleCreate(e) {
@@ -132,6 +143,44 @@ export default function Invoices() {
     load();
   }
 
+  function csvEscape(value) {
+    const str = String(value ?? "");
+    if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+    return str;
+  }
+
+  function handleExport() {
+    const filtered = invoices.filter((inv) => {
+      if (exportStart && (!inv.invoice_date || inv.invoice_date < exportStart)) return false;
+      if (exportEnd && (!inv.invoice_date || inv.invoice_date > exportEnd)) return false;
+      return true;
+    });
+
+    const rows = [["Date", "Project", "Vendor", "Category", "GL Code", "Description", "Amount"]];
+    for (const inv of filtered) {
+      const trade = inv.vendors?.trade;
+      rows.push([
+        inv.invoice_date ?? "",
+        projectName,
+        inv.vendors?.name ?? "",
+        inv.tasks?.category ?? "",
+        (trade && glMappings[trade]) || "",
+        inv.description ?? "",
+        Number(inv.amount).toFixed(2),
+      ]);
+    }
+
+    const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const rangeLabel = exportStart || exportEnd ? `_${exportStart || "start"}_to_${exportEnd || "end"}` : "";
+    link.href = url;
+    link.download = `invoices-${projectName || "export"}${rangeLabel}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleDelete(invoice) {
     if (!window.confirm(`Delete this ${invoice.amount ? `$${invoice.amount} ` : ""}invoice? This can't be undone.`)) return;
     if (invoice.file_path) {
@@ -196,6 +245,26 @@ export default function Invoices() {
           {submitting ? "Adding…" : "Add invoice"}
         </button>
       </form>
+
+      {invoices && invoices.length > 0 && (
+        <div className="budget-card" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div>
+            <label htmlFor="export-start" style={{ margin: "0 0 4px" }}>
+              From
+            </label>
+            <input id="export-start" type="date" value={exportStart} onChange={(e) => setExportStart(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="export-end" style={{ margin: "0 0 4px" }}>
+              To
+            </label>
+            <input id="export-end" type="date" value={exportEnd} onChange={(e) => setExportEnd(e.target.value)} />
+          </div>
+          <button type="button" onClick={handleExport}>
+            Export CSV for accounting
+          </button>
+        </div>
+      )}
 
       {!invoices && !error && <p>Loading…</p>}
       {invoices && invoices.length === 0 && <p className="task-meta">No invoices yet — add one above.</p>}
