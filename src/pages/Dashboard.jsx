@@ -22,6 +22,9 @@ export default function Dashboard() {
   const [categoryActuals, setCategoryActuals] = useState({});
   const [editingCategory, setEditingCategory] = useState(null);
   const [categoryInput, setCategoryInput] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryTarget, setNewCategoryTarget] = useState("");
 
   useEffect(() => {
     load();
@@ -88,6 +91,26 @@ export default function Dashboard() {
       return;
     }
     setEditingCategory(null);
+    load();
+  }
+
+  async function handleAddCategoryTarget(e) {
+    e.preventDefault();
+    const name = newCategoryName.trim();
+    const value = newCategoryTarget.trim();
+    if (!name || !value) return;
+
+    const { error } = await supabase
+      .from("project_category_budgets")
+      .upsert({ project_id: projectId, category: name, target_amount: value }, { onConflict: "project_id,category" });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setAddingCategory(false);
+    setNewCategoryName("");
+    setNewCategoryTarget("");
     load();
   }
 
@@ -183,81 +206,120 @@ export default function Dashboard() {
         )}
       </div>
 
-      {categoryNames.length > 0 && (
-        <table className="task-table" style={{ marginBottom: 20 }}>
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Target</th>
-              <th>Actual</th>
-              <th style={{ minWidth: 140 }}></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {categoryNames.map((cat) => {
-              const target = categoryTargets[cat];
-              const actual = categoryActuals[cat] || 0;
-              const pct = target ? Math.min((actual / Number(target)) * 100, 100) : 0;
-              const over = target && actual > Number(target);
-              return (
-                <tr key={cat}>
-                  <td>{cat}</td>
-                  <td>
-                    {editingCategory === cat ? (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={categoryInput}
-                        onChange={(e) => setCategoryInput(e.target.value)}
-                        style={{ width: 100 }}
-                        autoFocus
-                      />
-                    ) : target ? (
-                      `$${Number(target).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td>
-                    {target && (
-                      <div className="progress-track">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${pct}%`, background: over ? "var(--blocked-fg)" : undefined }}
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 8px" }}>Budget by Category</h3>
+
+        {categoryNames.length === 0 && <p className="task-meta">No categories tracked yet.</p>}
+
+        {categoryNames.length > 0 && (
+          <table className="task-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Target</th>
+                <th>Actual</th>
+                <th style={{ minWidth: 140 }}></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryNames.map((cat) => {
+                const target = categoryTargets[cat];
+                const actual = categoryActuals[cat] || 0;
+                const pct = target ? Math.min((actual / Number(target)) * 100, 100) : 0;
+                const over = target && actual > Number(target);
+                return (
+                  <tr key={cat}>
+                    <td>{cat}</td>
+                    <td>
+                      {editingCategory === cat ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={categoryInput}
+                          onChange={(e) => setCategoryInput(e.target.value)}
+                          style={{ width: 100 }}
+                          autoFocus
                         />
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {isAdmin &&
-                      (editingCategory === cat ? (
-                        <>
-                          <button onClick={() => handleSaveCategoryTarget(cat)}>Save</button>
-                          <button onClick={() => setEditingCategory(null)} style={{ marginLeft: 6 }}>
-                            Cancel
-                          </button>
-                        </>
+                      ) : target ? (
+                        `$${Number(target).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                       ) : (
-                        <button
-                          className="link-btn"
-                          onClick={() => {
-                            setCategoryInput(target ?? "");
-                            setEditingCategory(cat);
-                          }}
-                        >
-                          {target ? "Edit" : "Set target"}
-                        </button>
-                      ))}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+                        "—"
+                      )}
+                    </td>
+                    <td>${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td>
+                      {target && (
+                        <div className="progress-track">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${pct}%`, background: over ? "var(--blocked-fg)" : undefined }}
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {isAdmin &&
+                        (editingCategory === cat ? (
+                          <>
+                            <button onClick={() => handleSaveCategoryTarget(cat)}>Save</button>
+                            <button onClick={() => setEditingCategory(null)} style={{ marginLeft: 6 }}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="link-btn"
+                            onClick={() => {
+                              setCategoryInput(target ?? "");
+                              setEditingCategory(cat);
+                            }}
+                          >
+                            {target ? "Edit" : "Set target"}
+                          </button>
+                        ))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        {isAdmin &&
+          (addingCategory ? (
+            <form
+              onSubmit={handleAddCategoryTarget}
+              style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}
+            >
+              <input
+                placeholder="Category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                style={{ width: 160 }}
+                autoFocus
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Target ($)"
+                value={newCategoryTarget}
+                onChange={(e) => setNewCategoryTarget(e.target.value)}
+                style={{ width: 120 }}
+              />
+              <button type="submit">Add</button>
+              <button type="button" onClick={() => setAddingCategory(false)}>
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button className="link-btn" style={{ marginTop: 8 }} onClick={() => setAddingCategory(true)}>
+              + Add category budget
+            </button>
+          ))}
+      </div>
 
       {showForm && (
         <TaskCreateForm
