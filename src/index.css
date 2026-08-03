@@ -86,6 +86,20 @@ textarea {
   max-width: 420px;
 }
 
+/* Some browsers (notably Safari) apply their own native "textfield" chrome to
+   type="number" inputs that can visually override the background/color rules above even
+   though the field itself is fully enabled — forcing a plain, flat appearance keeps it
+   looking identical to the text/date fields it sits next to everywhere in the app. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 input[type="checkbox"],
 input[type="radio"] {
   width: 16px;
