@@ -202,14 +202,14 @@ export default function Projects() {
           <tbody>
             {(openItems ?? []).map((t) => (
               <tr key={t.id}>
-                <td>
+                <td data-label="Task">
                   <Link to={`/projects/${t.project_id}/tasks/${t.id}`}>{t.title}</Link>
                 </td>
-                <td>{t.projects?.name}</td>
-                <td>
+                <td data-label="Project">{t.projects?.name}</td>
+                <td data-label="Status">
                   <StatusPill status={t.status} />
                 </td>
-                <td>{t.due_date}</td>
+                <td data-label="Due">{t.due_date}</td>
               </tr>
             ))}
             {openItems && openItems.length === 0 && (

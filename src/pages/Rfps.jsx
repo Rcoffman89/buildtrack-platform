@@ -156,16 +156,16 @@ export default function Rfps() {
           <tbody>
             {rfps.map((r) => (
               <tr key={r.id}>
-                <td>
+                <td data-label="Title">
                   <Link to={`/projects/${projectId}/rfps/${r.id}`}>{r.title}</Link>
                 </td>
-                <td>{r.tasks?.title ?? "—"}</td>
-                <td>{r.trade ?? "—"}</td>
-                <td>{r.due_date ?? "—"}</td>
-                <td>
+                <td data-label="Task">{r.tasks?.title ?? "—"}</td>
+                <td data-label="Trade">{r.trade ?? "—"}</td>
+                <td data-label="Due">{r.due_date ?? "—"}</td>
+                <td data-label="Status">
                   <span className={`pill ${STATUS_CLASS[r.status] || "pill-none"}`}>{r.status}</span>
                 </td>
-                <td>{r.rfp_bids?.length ?? 0}</td>
+                <td data-label="Bids">{r.rfp_bids?.length ?? 0}</td>
               </tr>
             ))}
           </tbody>

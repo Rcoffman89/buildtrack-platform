@@ -169,10 +169,10 @@ export default function Vendors() {
               if (draft) {
                 return (
                   <tr key={v.id}>
-                    <td>
+                    <td data-label="Name">
                       <input value={draft.name} onChange={(e) => updateField(v.id, "name", e.target.value)} />
                     </td>
-                    <td>
+                    <td data-label="Trade">
                       <select value={draft.trade} onChange={(e) => updateField(v.id, "trade", e.target.value)}>
                         {TRADE_OPTIONS.map((t) => (
                           <option key={t} value={t}>
@@ -181,21 +181,21 @@ export default function Vendors() {
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Contact email">
                       <input
                         type="email"
                         value={draft.contact_email || ""}
                         onChange={(e) => updateField(v.id, "contact_email", e.target.value)}
                       />
                     </td>
-                    <td>
+                    <td data-label="Contact phone">
                       <input
                         type="tel"
                         value={draft.contact_phone || ""}
                         onChange={(e) => updateField(v.id, "contact_phone", e.target.value)}
                       />
                     </td>
-                    <td>
+                    <td data-label="Notes">
                       <input value={draft.notes || ""} onChange={(e) => updateField(v.id, "notes", e.target.value)} />
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
@@ -209,11 +209,11 @@ export default function Vendors() {
               }
               return (
                 <tr key={v.id}>
-                  <td>{v.name}</td>
-                  <td>{v.trade}</td>
-                  <td>{v.contact_email}</td>
-                  <td>{v.contact_phone}</td>
-                  <td>{v.notes}</td>
+                  <td data-label="Name">{v.name}</td>
+                  <td data-label="Trade">{v.trade}</td>
+                  <td data-label="Contact email">{v.contact_email}</td>
+                  <td data-label="Contact phone">{v.contact_phone}</td>
+                  <td data-label="Notes">{v.notes}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button onClick={() => startEdit(v)}>Edit</button>
                     <button onClick={() => handleDelete(v)} style={{ marginLeft: 6 }}>

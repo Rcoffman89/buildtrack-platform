@@ -73,8 +73,8 @@ export default function GlCodes() {
         <tbody>
           {TRADE_OPTIONS.map((trade) => (
             <tr key={trade}>
-              <td>{trade}</td>
-              <td>
+              <td data-label="Trade">{trade}</td>
+              <td data-label="GL Code">
                 <input
                   value={codes[trade] ?? ""}
                   onChange={(e) => setCodes({ ...codes, [trade]: e.target.value })}

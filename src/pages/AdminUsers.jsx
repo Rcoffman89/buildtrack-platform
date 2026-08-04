@@ -109,8 +109,8 @@ export default function AdminUsers() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td>{u.email}</td>
-                <td>
+                <td data-label="Email">{u.email}</td>
+                <td data-label="Role">
                   <select
                     value={u.role}
                     disabled={u.id === user.id}
@@ -121,7 +121,7 @@ export default function AdminUsers() {
                     <option value="admin">Admin</option>
                   </select>
                 </td>
-                <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                <td data-label="Joined">{new Date(u.created_at).toLocaleDateString()}</td>
               </tr>
             ))}
           </tbody>

@@ -61,17 +61,17 @@ export default function AuditLog() {
           <tbody>
             {entries.map((e) => (
               <tr key={e.id}>
-                <td>{new Date(e.created_at).toLocaleString()}</td>
-                <td>
+                <td data-label="When">{new Date(e.created_at).toLocaleString()}</td>
+                <td data-label="Task">
                   {e.tasks ? (
                     <Link to={`/projects/${projectId}/tasks/${e.task_id}`}>{e.tasks.title}</Link>
                   ) : (
                     <em>(deleted task)</em>
                   )}
                 </td>
-                <td>{e.profiles?.email ?? "system"}</td>
-                <td>{e.field_name ?? e.change_type}</td>
-                <td>
+                <td data-label="Who">{e.profiles?.email ?? "system"}</td>
+                <td data-label="Field">{e.field_name ?? e.change_type}</td>
+                <td data-label="Change">
                   {e.old_value ?? "—"} → {e.new_value ?? "—"}
                 </td>
               </tr>

@@ -221,6 +221,130 @@ label {
   margin: 0 auto;
 }
 
+.nav-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+@media (max-width: 720px) {
+  .app-nav {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .nav-toggle {
+    display: block;
+    order: 1;
+    margin-left: auto;
+  }
+
+  .app-nav-brand {
+    order: 0;
+  }
+
+  .app-nav-user {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .app-nav nav {
+    order: 3;
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 4px;
+    display: none;
+  }
+
+  .app-nav nav.open {
+    display: flex;
+  }
+
+  .app-nav nav a {
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* Sub-nav (per-project tabs): a horizontally scrollable strip on narrow screens instead of
+   wrapping into a ragged multi-line block, or worse, nesting a second hamburger inside the
+   primary one. */
+@media (max-width: 720px) {
+  .sub-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 12px;
+  }
+
+  .sub-nav a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+/* Responsive tables: below the breakpoint, every .task-table becomes a stack of cards instead
+   of a cramped table with wrapping columns. Each <td> needs a data-label attribute (the field
+   name) which renders as a label via ::before — this only affects layout below the breakpoint,
+   so it's inert at desktop widths. */
+@media (max-width: 640px) {
+  .task-table thead {
+    display: none;
+  }
+
+  .task-table,
+  .task-table tbody,
+  .task-table tr,
+  .task-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .task-table tr {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 4px 0;
+  }
+
+  .task-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .task-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+  }
+
+  .task-table td:last-child {
+    border-bottom: none;
+  }
+
+  .task-table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    text-align: left;
+    flex: 0 0 auto;
+  }
+
+  .task-table td:not([data-label])::before {
+    content: "";
+  }
+}
+
 /* Dashboard */
 .dash-header {
   display: flex;

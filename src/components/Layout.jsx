@@ -1,15 +1,27 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth();
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Collapse the mobile nav drawer automatically whenever the route changes, so picking a
+  // link doesn't leave the drawer sitting open over the new page.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="app-shell">
       <header className="app-nav">
         <div className="app-nav-brand">BuildTrack</div>
-        <nav>
+        <button className="nav-toggle" onClick={() => setNavOpen((v) => !v)} aria-label="Toggle navigation">
+          {navOpen ? "✕" : "☰"}
+        </button>
+        <nav className={navOpen ? "open" : ""}>
           <NavLink to="/" end>
             Projects
           </NavLink>

@@ -320,14 +320,14 @@ export default function Invoices() {
               if (draft) {
                 return (
                   <tr key={inv.id}>
-                    <td>
+                    <td data-label="Date">
                       <input
                         type="date"
                         value={draft.invoice_date}
                         onChange={(e) => updateEditField(inv.id, "invoice_date", e.target.value)}
                       />
                     </td>
-                    <td>
+                    <td data-label="Amount">
                       <input
                         type="number"
                         min="0"
@@ -337,7 +337,7 @@ export default function Invoices() {
                         style={{ width: 90 }}
                       />
                     </td>
-                    <td>
+                    <td data-label="Vendor">
                       <select value={draft.vendor_id} onChange={(e) => updateEditField(inv.id, "vendor_id", e.target.value)}>
                         <option value="">— None —</option>
                         {vendors.map((v) => (
@@ -347,7 +347,7 @@ export default function Invoices() {
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Task">
                       <select value={draft.task_id} onChange={(e) => updateEditField(inv.id, "task_id", e.target.value)}>
                         <option value="">— None —</option>
                         {tasks.map((t) => (
@@ -357,20 +357,20 @@ export default function Invoices() {
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Category">
                       <input
                         value={draft.category}
                         onChange={(e) => updateEditField(inv.id, "category", e.target.value)}
                         style={{ width: 100 }}
                       />
                     </td>
-                    <td>
+                    <td data-label="Description">
                       <input
                         value={draft.description}
                         onChange={(e) => updateEditField(inv.id, "description", e.target.value)}
                       />
                     </td>
-                    <td>
+                    <td data-label="File">
                       {inv.file_path ? (
                         <button className="link-btn" onClick={() => handleView(inv)}>
                           View
@@ -390,13 +390,13 @@ export default function Invoices() {
               }
               return (
                 <tr key={inv.id}>
-                  <td>{inv.invoice_date}</td>
-                  <td>${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td>{inv.vendors?.name ?? "—"}</td>
-                  <td>{inv.tasks?.title ?? "—"}</td>
-                  <td>{inv.category ?? "—"}</td>
-                  <td>{inv.description}</td>
-                  <td>
+                  <td data-label="Date">{inv.invoice_date}</td>
+                  <td data-label="Amount">${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                  <td data-label="Vendor">{inv.vendors?.name ?? "—"}</td>
+                  <td data-label="Task">{inv.tasks?.title ?? "—"}</td>
+                  <td data-label="Category">{inv.category ?? "—"}</td>
+                  <td data-label="Description">{inv.description}</td>
+                  <td data-label="File">
                     {inv.file_path ? (
                       <button className="link-btn" onClick={() => handleView(inv)}>
                         View

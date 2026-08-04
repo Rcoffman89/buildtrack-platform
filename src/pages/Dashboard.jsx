@@ -230,8 +230,8 @@ export default function Dashboard() {
                 const over = target && actual > Number(target);
                 return (
                   <tr key={cat}>
-                    <td>{cat}</td>
-                    <td>
+                    <td data-label="Category">{cat}</td>
+                    <td data-label="Target">
                       {editingCategory === cat ? (
                         <input
                           type="number"
@@ -248,8 +248,8 @@ export default function Dashboard() {
                         "—"
                       )}
                     </td>
-                    <td>${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td>
+                    <td data-label="Actual">${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td data-label="Progress">
                       {target && (
                         <div className="progress-track">
                           <div
@@ -362,19 +362,19 @@ export default function Dashboard() {
           <tbody>
             {visible.map((t) => (
               <tr key={t.id}>
-                <td>
+                <td data-label="Task">
                   <Link to={`/projects/${projectId}/tasks/${t.id}`}>
                     {t.milestone && <span className="milestone-flag">◆ </span>}
                     {t.title}
                   </Link>
                 </td>
-                <td>{t.category}</td>
-                <td>
+                <td data-label="Category">{t.category}</td>
+                <td data-label="Status">
                   <StatusPill status={t.status} />
                 </td>
-                <td>{t.percent_complete}%</td>
-                <td>{t.assigned_to}</td>
-                <td>{t.due_date}</td>
+                <td data-label="% Complete">{t.percent_complete}%</td>
+                <td data-label="Assigned to">{t.assigned_to}</td>
+                <td data-label="Due">{t.due_date}</td>
               </tr>
             ))}
           </tbody>

@@ -233,11 +233,11 @@ export default function RfpDetail() {
             <tbody>
               {bids.map((bid) => (
                 <tr key={bid.id}>
-                  <td>{bid.vendors?.name}</td>
-                  <td>${Number(bid.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td>{bid.submitted_at ?? "—"}</td>
-                  <td>{bid.notes}</td>
-                  <td>
+                  <td data-label="Vendor">{bid.vendors?.name}</td>
+                  <td data-label="Amount">${Number(bid.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                  <td data-label="Submitted">{bid.submitted_at ?? "—"}</td>
+                  <td data-label="Notes">{bid.notes}</td>
+                  <td data-label="File">
                     {bid.file_path ? (
                       <button className="link-btn" onClick={() => handleViewFile(bid.file_path)}>
                         View
@@ -246,7 +246,7 @@ export default function RfpDetail() {
                       "—"
                     )}
                   </td>
-                  <td>{bid.status}</td>
+                  <td data-label="Status">{bid.status}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {bid.status === "Pending" && rfp.status !== "Awarded" && (
                       <button onClick={() => handleAward(bid)}>Award</button>
