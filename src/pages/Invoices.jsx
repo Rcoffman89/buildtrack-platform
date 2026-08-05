@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { CATEGORY_OPTIONS } from "../lib/categories.js";
 
 function invoiceFilePath(organizationId, projectId, file) {
   return `${organizationId}/${projectId}/${crypto.randomUUID()}-${file.name}`;
@@ -233,12 +234,14 @@ export default function Invoices() {
         </select>
 
         <label htmlFor="inv-category">Category</label>
-        <input
-          id="inv-category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="e.g. Design, Approvals, Construction"
-        />
+        <select id="inv-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">— None —</option>
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="inv-vendor">Vendor (optional)</label>
         <select id="inv-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
@@ -358,11 +361,14 @@ export default function Invoices() {
                       </select>
                     </td>
                     <td data-label="Category">
-                      <input
-                        value={draft.category}
-                        onChange={(e) => updateEditField(inv.id, "category", e.target.value)}
-                        style={{ width: 100 }}
-                      />
+                      <select value={draft.category} onChange={(e) => updateEditField(inv.id, "category", e.target.value)}>
+                        <option value="">— None —</option>
+                        {CATEGORY_OPTIONS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td data-label="Description">
                       <input

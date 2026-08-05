@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient.js";
+import { CATEGORY_OPTIONS } from "../lib/categories.js";
 
 export default function TaskCreateForm({ projectId, existingTasks, onCreated, onCancel }) {
   const [title, setTitle] = useState("");
@@ -78,7 +79,14 @@ export default function TaskCreateForm({ projectId, existingTasks, onCreated, on
       <input id="title" required value={title} onChange={(e) => setTitle(e.target.value)} />
 
       <label htmlFor="category">Category</label>
-      <input id="category" value={category} onChange={(e) => setCategory(e.target.value)} />
+      <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}>
+        <option value="">— None —</option>
+        {CATEGORY_OPTIONS.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
 
       <label htmlFor="start">Start date</label>
       <input id="start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />

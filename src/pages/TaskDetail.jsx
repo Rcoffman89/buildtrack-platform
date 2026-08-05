@@ -5,6 +5,7 @@ import { logAudit } from "../lib/audit.js";
 import { recomputeProjectSchedule } from "../lib/scheduling.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import StatusPill from "../components/StatusPill.jsx";
+import { CATEGORY_OPTIONS } from "../lib/categories.js";
 
 const STATUS_OPTIONS = ["Not Started", "In Progress", "Complete", "Blocked"];
 
@@ -97,6 +98,7 @@ export default function TaskDetail() {
         assigned_to: form.assigned_to,
         vendor_id: form.vendor_id,
         estimated_cost: form.estimated_cost,
+        category: form.category,
         notes: form.notes,
         start_date: form.start_date,
         due_date: form.due_date,
@@ -111,9 +113,17 @@ export default function TaskDetail() {
 
     for (const field of changedFields) {
       if (
-        ["status", "percent_complete", "assigned_to", "vendor_id", "estimated_cost", "notes", "start_date", "due_date"].includes(
-          field
-        )
+        [
+          "status",
+          "percent_complete",
+          "assigned_to",
+          "vendor_id",
+          "estimated_cost",
+          "category",
+          "notes",
+          "start_date",
+          "due_date",
+        ].includes(field)
       ) {
         await logAudit({
           taskId: id,
@@ -341,6 +351,20 @@ export default function TaskDetail() {
           value={form.assigned_to || ""}
           onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
         />
+
+        <label htmlFor="task-category">Category</label>
+        <select
+          id="task-category"
+          value={form.category || ""}
+          onChange={(e) => setForm({ ...form, category: e.target.value || null })}
+        >
+          <option value="">— None —</option>
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="vendor">Vendor</label>
         <select
