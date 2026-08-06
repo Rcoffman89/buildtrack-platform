@@ -22,6 +22,11 @@ export default function RfpDetail() {
   const [bidFile, setBidFile] = useState(null);
   const [submittingBid, setSubmittingBid] = useState(false);
 
+  const [invitations, setInvitations] = useState([]);
+  const [inviteVendorId, setInviteVendorId] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteResults, setInviteResults] = useState({});
+
   useEffect(() => {
     load();
   }, [id]);
@@ -50,6 +55,74 @@ export default function RfpDetail() {
 
     const { data: vendorData } = await supabase.from("vendors").select("id,name,trade").order("name");
     setVendors(vendorData ?? []);
+
+    const { data: invitationData } = await supabase
+      .from("rfp_invitations")
+      .select("id,vendor_id,token,expires_at,used_at,created_at,vendors(name)")
+      .eq("rfp_id", id)
+      .order("created_at", { ascending: false });
+    setInvitations(invitationData ?? []);
+  }
+
+  function generateToken() {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function computeExpiresAt(rfpData) {
+    if (rfpData.due_date) {
+      return new Date(`${rfpData.due_date}T23:59:59`).toISOString();
+    }
+    const d = new Date();
+    d.setDate(d.getDate() + 90);
+    return d.toISOString();
+  }
+
+  async function handleInviteVendor(e) {
+    e.preventDefault();
+    if (!inviteVendorId) return;
+    setInviting(true);
+    setError("");
+
+    // Regenerate semantics: at most one active (unused) link per vendor on this RFP — clear
+    // any prior one first so an old link can never coexist with a fresh one.
+    await supabase.from("rfp_invitations").delete().eq("rfp_id", id).eq("vendor_id", inviteVendorId).is("used_at", null);
+
+    const token = generateToken();
+    const expiresAt = computeExpiresAt(rfp);
+
+    const { data: created, error: insertError } = await supabase
+      .from("rfp_invitations")
+      .insert({ rfp_id: id, vendor_id: inviteVendorId, token, expires_at: expiresAt })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      setInviting(false);
+      setError(insertError.message);
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const res = await fetch("/api/send-rfp-invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ invitationId: created.id }),
+    });
+    const body = await res.json();
+
+    setInviting(false);
+    if (!res.ok) {
+      setError(body.error || "Failed to send invite");
+      load();
+      return;
+    }
+    setInviteResults((prev) => ({ ...prev, [created.id]: body }));
+    setInviteVendorId("");
+    load();
   }
 
   async function handleUploadDocs(e) {
@@ -209,6 +282,70 @@ export default function RfpDetail() {
           <input type="file" multiple accept="application/pdf,image/*" onChange={(e) => setExtraFiles([...e.target.files])} />
           <button type="submit" disabled={uploadingDocs || extraFiles.length === 0}>
             {uploadingDocs ? "Uploading…" : "Upload"}
+          </button>
+        </form>
+      </div>
+
+      <div className="predecessors">
+        <h3>Vendor Invitations</h3>
+        <p className="task-meta">
+          Each vendor gets a one-time link to view this RFP and submit their own bid directly — the link stops
+          working the moment they submit. If a vendor needs to correct a mistake, send them a new invite; it
+          replaces their old link.
+        </p>
+
+        {invitations.length > 0 && (
+          <table className="task-table">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Status</th>
+                <th>Expires</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {invitations.map((inv) => {
+                const isUsed = !!inv.used_at;
+                const isExpired = !isUsed && new Date(inv.expires_at) < new Date();
+                const status = isUsed ? "Submitted" : isExpired ? "Expired" : "Pending";
+                const result = inviteResults[inv.id];
+                const link = result?.link ?? `${window.location.origin}/bid/${inv.token}`;
+                return (
+                  <tr key={inv.id}>
+                    <td data-label="Vendor">{inv.vendors?.name}</td>
+                    <td data-label="Status">{status}</td>
+                    <td data-label="Expires">{new Date(inv.expires_at).toLocaleDateString()}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {status === "Pending" && (
+                        <button className="link-btn" onClick={() => navigator.clipboard.writeText(link)}>
+                          Copy link
+                        </button>
+                      )}
+                      {result && (
+                        <div className="task-meta" style={{ marginTop: 4 }}>
+                          {result.emailSent ? "Emailed to vendor." : result.reason || "Email not sent — copy the link above."}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        <form onSubmit={handleInviteVendor} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+          <select value={inviteVendorId} onChange={(e) => setInviteVendorId(e.target.value)} required>
+            <option value="">— Select a vendor to invite —</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name} ({v.trade})
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={inviting || !inviteVendorId}>
+            {inviting ? "Sending…" : "Send invite"}
           </button>
         </form>
       </div>

@@ -17,6 +17,7 @@ import Invoices from "./pages/Invoices.jsx";
 import GlCodes from "./pages/GlCodes.jsx";
 import Rfps from "./pages/Rfps.jsx";
 import RfpDetail from "./pages/RfpDetail.jsx";
+import VendorBid from "./pages/VendorBid.jsx";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/set-password" element={<SetPassword />} />
+          <Route path="/bid/:token" element={<VendorBid />} />
           <Route
             path="/"
             element={
