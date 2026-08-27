@@ -82,7 +82,7 @@ export default function Login() {
     <div className="auth-screen">
       <form className="auth-card" onSubmit={handleSubmit}>
         <h1>BuildTrack</h1>
-        <p className="auth-subtitle">Montego Venue schedule</p>
+        <p className="auth-subtitle">Project & schedule management</p>
 
         <label htmlFor="email">Email</label>
         <input
