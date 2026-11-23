@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Monday-morning spend update: for each active project, total spend vs budget, the breakdown by
-// budget category, and the expenses (invoices) added in the last 7 days. Sent with the same
-// Resend setup the RFP invites use.
+// Monday-morning spend update: for each active project, total spend so far and spend by budget
+// category. No budget or target numbers (Ryan's call). Sent with the same Resend setup the RFP
+// invites use.
 //
 // Netlify environment variables:
 //   WEEKLY_SPEND_RECIPIENTS  required, comma-separated email addresses
@@ -43,68 +43,25 @@ function esc(s) {
 const cell = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:left"';
 const cellR = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:right"';
 
-function projectSection(project, targets, invoices, siteUrl, since) {
+function projectSection(project, invoices, siteUrl) {
   const byCat = {};
   for (const inv of invoices) {
     const cat = inv.category || "Uncategorized";
     byCat[cat] = (byCat[cat] || 0) + Number(inv.amount);
   }
-  const targetByCat = Object.fromEntries(targets.map((t) => [t.category, Number(t.target_amount)]));
   const totalSpent = invoices.reduce((s, i) => s + Number(i.amount), 0);
-  const totalBudget = targets.reduce((s, t) => s + Number(t.target_amount), 0);
-  const pct = totalBudget ? Math.round((totalSpent / totalBudget) * 100) : null;
-
-  const cats = [...CATEGORY_ORDER, ...(byCat.Uncategorized ? ["Uncategorized"] : [])].filter(
-    (c) => targetByCat[c] != null || byCat[c]
-  );
+  const cats = [...CATEGORY_ORDER, "Uncategorized"].filter((c) => byCat[c]);
   const catRows = cats
-    .map((c) => {
-      const t = targetByCat[c];
-      const a = byCat[c] || 0;
-      const over = t != null && a > t;
-      const spentCell = over ? cellR.replace('text-align:right"', 'text-align:right;color:#a13a2c"') : cellR;
-      return `<tr><td ${cell}>${esc(c)}</td><td ${cellR}>${t != null ? money(t) : "—"}</td><td ${spentCell}>${money(
-        a
-      )}</td><td ${cellR}>${t != null ? money(t - a) : "—"}</td></tr>`;
-    })
-    .join("");
-
-  const recent = invoices
-    .filter((i) => i.created_at >= since)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  const recentTotal = recent.reduce((s, i) => s + Number(i.amount), 0);
-  const recentRows = recent
-    .map(
-      (i) =>
-        `<tr><td ${cell}>${esc(i.invoice_date || i.created_at.slice(0, 10))}</td><td ${cell}>${esc(
-          i.vendors?.name || "—"
-        )}</td><td ${cell}>${esc(i.category || "Uncategorized")}</td><td ${cell}>${esc(
-          i.description || ""
-        )}</td><td ${cellR}>${money(i.amount)}</td></tr>`
-    )
+    .map((c) => `<tr><td ${cell}>${esc(c)}</td><td ${cellR}>${money(byCat[c])}</td></tr>`)
     .join("");
 
   const link = `${siteUrl}/projects/${project.id}`;
   return `
   <h2 style="margin:24px 0 4px">${esc(project.name)}</h2>
-  <p style="margin:0 0 12px;font-size:16px"><strong>${money(totalSpent)}</strong> spent${
-    totalBudget ? ` of ${money(totalBudget)} budget (${pct}%)` : ""
-  }. ${recent.length ? `${money(recentTotal)} added in the last 7 days.` : "Nothing new in the last 7 days."}</p>
-  ${
-    catRows
-      ? `<table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
-    <tr><th ${cell}>Category</th><th ${cellR}>Budget</th><th ${cellR}>Spent</th><th ${cellR}>Remaining</th></tr>
-    ${catRows}</table>`
-      : ""
-  }
-  ${
-    recent.length
-      ? `<h3 style="margin:12px 0 4px;font-size:15px">New this week</h3>
+  <p style="margin:0 0 12px;font-size:16px">Total spent so far: <strong>${money(totalSpent)}</strong></p>
   <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
-    <tr><th ${cell}>Date</th><th ${cell}>Vendor</th><th ${cell}>Category</th><th ${cell}>Description</th><th ${cellR}>Amount</th></tr>
-    ${recentRows}</table>`
-      : ""
-  }
+    <tr><th ${cell}>Category</th><th ${cellR}>Spent</th></tr>
+    ${catRows}</table>
   <p style="margin:0"><a href="${esc(link)}">Open ${esc(project.name)} in BuildTrack</a></p>`;
 }
 
@@ -124,7 +81,6 @@ export default async () => {
 
   const admin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   const siteUrl = process.env.URL || "https://buildtrack-montego-platform.netlify.app";
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   let projectQuery = admin.from("projects").select("id,name,status,organization_id").neq("status", "Complete").order("name");
   if (process.env.WEEKLY_SPEND_ORG_ID) projectQuery = projectQuery.eq("organization_id", process.env.WEEKLY_SPEND_ORG_ID);
@@ -136,19 +92,13 @@ export default async () => {
 
   const sections = [];
   for (const project of projects ?? []) {
-    const [{ data: targets }, { data: invoices }] = await Promise.all([
-      admin.from("project_category_budgets").select("category,target_amount").eq("project_id", project.id),
-      admin
-        .from("invoices")
-        .select("amount,category,invoice_date,description,created_at,vendors(name)")
-        .eq("project_id", project.id),
-    ]);
-    // Skip projects with no budget and no spend: nothing to report.
-    if (!(targets ?? []).length && !(invoices ?? []).length) continue;
-    sections.push(projectSection(project, targets ?? [], invoices ?? [], siteUrl, since));
+    const { data: invoices } = await admin.from("invoices").select("amount,category").eq("project_id", project.id);
+    // Skip projects with no spend yet: nothing to report.
+    if (!(invoices ?? []).length) continue;
+    sections.push(projectSection(project, invoices, siteUrl));
   }
   if (!sections.length) {
-    console.log("weekly-spend: no projects with a budget or spend, nothing sent");
+    console.log("weekly-spend: no projects with spend yet, nothing sent");
     return;
   }
 
