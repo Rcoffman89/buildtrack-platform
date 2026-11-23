@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 import StatusPill from "../components/StatusPill.jsx";
 import TaskCreateForm from "../components/TaskCreateForm.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { CATEGORY_OPTIONS } from "../lib/categories.js";
+
+const UNCATEGORIZED = "Uncategorized";
+
+function money(n) {
+  return `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 const STATUS_FILTERS = ["All", "Not Started", "In Progress", "Complete", "Blocked"];
 
@@ -18,6 +24,8 @@ export default function Dashboard() {
   const [actualCost, setActualCost] = useState(0);
   const [categoryTargets, setCategoryTargets] = useState({});
   const [categoryActuals, setCategoryActuals] = useState({});
+  const [categoryInvoices, setCategoryInvoices] = useState({});
+  const [openCategory, setOpenCategory] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
   const [categoryInput, setCategoryInput] = useState("");
 
@@ -34,15 +42,25 @@ export default function Dashboard() {
     if (error) setError(error.message);
     else setTasks(data);
 
-    const { data: invoiceData } = await supabase.from("invoices").select("amount,category").eq("project_id", projectId);
+    const { data: invoiceData } = await supabase
+      .from("invoices")
+      .select("id,amount,category,invoice_date,description,vendors(name)")
+      .eq("project_id", projectId)
+      .order("invoice_date", { ascending: false });
     setActualCost((invoiceData ?? []).reduce((sum, inv) => sum + Number(inv.amount), 0));
 
+    // Invoices are the project's expenses: each carries its own category, so a category's
+    // Actual is the sum of its invoices, and the same rows are listed when it is expanded.
     const actuals = {};
+    const byCategory = {};
     for (const inv of invoiceData ?? []) {
-      const cat = inv.category || "Uncategorized";
+      const cat = inv.category || UNCATEGORIZED;
       actuals[cat] = (actuals[cat] || 0) + Number(inv.amount);
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(inv);
     }
     setCategoryActuals(actuals);
+    setCategoryInvoices(byCategory);
 
     const { data: categoryBudgetData } = await supabase
       .from("project_category_budgets")
@@ -148,14 +166,28 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {CATEGORY_OPTIONS.map((cat) => {
+            {[...CATEGORY_OPTIONS, ...(categoryInvoices[UNCATEGORIZED] ? [UNCATEGORIZED] : [])].map((cat) => {
               const target = categoryTargets[cat];
               const actual = categoryActuals[cat] || 0;
               const pct = target ? Math.min((actual / Number(target)) * 100, 100) : 0;
               const over = target && actual > Number(target);
+              const rows = categoryInvoices[cat] ?? [];
+              const isOpen = openCategory === cat;
+              const isUncategorized = cat === UNCATEGORIZED;
               return (
-                <tr key={cat}>
-                  <td data-label="Category">{cat}</td>
+                <Fragment key={cat}>
+                <tr>
+                  <td data-label="Category">
+                    <button
+                      type="button"
+                      className="link-btn category-toggle"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenCategory(isOpen ? null : cat)}
+                    >
+                      {isOpen ? "▾" : "▸"} {cat}
+                      {rows.length > 0 && <span className="task-meta"> ({rows.length})</span>}
+                    </button>
+                  </td>
                   <td data-label="Target">
                     {editingCategory === cat ? (
                       <input
@@ -173,7 +205,7 @@ export default function Dashboard() {
                       "—"
                     )}
                   </td>
-                  <td data-label="Actual">${actual.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                  <td data-label="Actual">{money(actual)}</td>
                   <td data-label="Progress">
                     {target && (
                       <div className="progress-track">
@@ -186,6 +218,7 @@ export default function Dashboard() {
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {isAdmin &&
+                      !isUncategorized &&
                       (editingCategory === cat ? (
                         <>
                           <button onClick={() => handleSaveCategoryTarget(cat)}>Save</button>
@@ -206,6 +239,44 @@ export default function Dashboard() {
                       ))}
                   </td>
                 </tr>
+                {isOpen && (
+                  <tr className="category-detail">
+                    <td colSpan={5}>
+                      {rows.length === 0 ? (
+                        <p className="task-meta" style={{ margin: "0 0 8px" }}>
+                          No expenses logged under {cat} yet.
+                        </p>
+                      ) : (
+                        <table className="task-table category-expenses">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Vendor</th>
+                              <th>Description</th>
+                              <th>Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((inv) => (
+                              <tr key={inv.id}>
+                                <td data-label="Date">{inv.invoice_date ?? "—"}</td>
+                                <td data-label="Vendor">{inv.vendors?.name ?? "—"}</td>
+                                <td data-label="Description">{inv.description || "—"}</td>
+                                <td data-label="Amount">{money(inv.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      <Link
+                        to={`/projects/${projectId}/invoices${isUncategorized ? "?category=__none__" : `?category=${encodeURIComponent(cat)}`}`}
+                      >
+                        {isUncategorized ? "Assign categories on the Invoices tab" : `+ Add expense to ${cat}`}
+                      </Link>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

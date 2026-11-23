@@ -13,6 +13,11 @@ export default function Invoices() {
   const { organizationId } = useAuth();
   const [searchParams] = useSearchParams();
   const preselectedTaskId = searchParams.get("task") || "";
+  // Arriving from a category on the Dashboard (?category=MEP) preselects that category on the
+  // new-invoice form and filters the list to it. "__none__" filters to uncategorized invoices.
+  const categoryParam = searchParams.get("category") || "";
+  const preselectedCategory = CATEGORY_OPTIONS.includes(categoryParam) ? categoryParam : "";
+  const initialFilter = preselectedCategory || (categoryParam === "__none__" ? "__none__" : "");
 
   const [invoices, setInvoices] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -29,7 +34,8 @@ export default function Invoices() {
   const [amount, setAmount] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(preselectedCategory);
+  const [categoryFilter, setCategoryFilter] = useState(initialFilter);
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState({});
@@ -99,7 +105,7 @@ export default function Invoices() {
     setAmount("");
     setInvoiceDate("");
     setDescription("");
-    setCategory("");
+    setCategory(preselectedCategory);
     setFile(null);
     load();
   }
@@ -218,6 +224,13 @@ export default function Invoices() {
     load();
   }
 
+  const visibleInvoices = (invoices ?? []).filter((inv) => {
+    if (!categoryFilter) return true;
+    if (categoryFilter === "__none__") return !inv.category;
+    return inv.category === categoryFilter;
+  });
+  const visibleTotal = visibleInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+
   return (
     <div>
       <h1>Invoices</h1>
@@ -300,6 +313,27 @@ export default function Invoices() {
         </div>
       )}
 
+      {invoices && invoices.length > 0 && (
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "0 0 12px" }}>
+          <label htmlFor="inv-filter" style={{ margin: 0 }}>
+            Show
+          </label>
+          <select id="inv-filter" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">All categories</option>
+            {CATEGORY_OPTIONS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            <option value="__none__">Uncategorized</option>
+          </select>
+          <span className="task-meta">
+            {visibleInvoices.length} invoice{visibleInvoices.length === 1 ? "" : "s"}, $
+            {visibleTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
+
       {!invoices && !error && <p>Loading…</p>}
       {invoices && invoices.length === 0 && <p className="task-meta">No invoices yet — add one above.</p>}
 
@@ -318,7 +352,7 @@ export default function Invoices() {
             </tr>
           </thead>
           <tbody>
-            {invoices.map((inv) => {
+            {visibleInvoices.map((inv) => {
               const draft = editing[inv.id];
               if (draft) {
                 return (
