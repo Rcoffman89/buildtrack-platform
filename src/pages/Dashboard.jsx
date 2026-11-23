@@ -36,7 +36,7 @@ export default function Dashboard() {
   async function load() {
     const { data, error } = await supabase
       .from("tasks")
-      .select("id,title,category,status,percent_complete,assigned_to,due_date,milestone")
+      .select("id,title,category,status,percent_complete,assigned_to,due_date,milestone,estimated_cost")
       .eq("project_id", projectId)
       .order("due_date", { ascending: true });
     if (error) setError(error.message);
@@ -44,7 +44,7 @@ export default function Dashboard() {
 
     const { data: invoiceData } = await supabase
       .from("invoices")
-      .select("id,amount,category,invoice_date,description,vendors(name)")
+      .select("id,amount,category,invoice_date,description,task_id,vendors(name)")
       .eq("project_id", projectId)
       .order("invoice_date", { ascending: false });
     setActualCost((invoiceData ?? []).reduce((sum, inv) => sum + Number(inv.amount), 0));
@@ -242,6 +242,48 @@ export default function Dashboard() {
                 {isOpen && (
                   <tr className="category-detail">
                     <td colSpan={5}>
+                      {(() => {
+                        // Line-item view: the tasks in this category, each with its estimated
+                        // cost (set on the task) against what has been invoiced to it so far.
+                        const catTasks = (tasks ?? []).filter((t) => t.category === cat);
+                        if (catTasks.length === 0) return null;
+                        const invoicedByTask = {};
+                        for (const inv of rows) {
+                          if (inv.task_id) invoicedByTask[inv.task_id] = (invoicedByTask[inv.task_id] || 0) + Number(inv.amount);
+                        }
+                        const estTotal = catTasks.reduce((s, t) => s + Number(t.estimated_cost || 0), 0);
+                        return (
+                          <>
+                            <h4 style={{ margin: "4px 0 6px" }}>Line items (tasks)</h4>
+                            <table className="task-table category-expenses">
+                              <thead>
+                                <tr>
+                                  <th>Task</th>
+                                  <th>Estimated</th>
+                                  <th>Invoiced</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {catTasks.map((t) => (
+                                  <tr key={t.id}>
+                                    <td data-label="Task">
+                                      <Link to={`/projects/${projectId}/tasks/${t.id}`}>{t.title}</Link>
+                                    </td>
+                                    <td data-label="Estimated">{t.estimated_cost != null ? money(t.estimated_cost) : "—"}</td>
+                                    <td data-label="Invoiced">{money(invoicedByTask[t.id] || 0)}</td>
+                                  </tr>
+                                ))}
+                                <tr>
+                                  <td data-label="Task" className="task-meta">Total of task estimates</td>
+                                  <td data-label="Estimated">{money(estTotal)}</td>
+                                  <td></td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <h4 style={{ margin: "10px 0 6px" }}>Expenses</h4>
+                          </>
+                        );
+                      })()}
                       {rows.length === 0 ? (
                         <p className="task-meta" style={{ margin: "0 0 8px" }}>
                           No expenses logged under {cat} yet.
