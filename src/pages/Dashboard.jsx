@@ -303,7 +303,9 @@ export default function Dashboard() {
                               <tr key={inv.id}>
                                 <td data-label="Date">{inv.invoice_date ?? "—"}</td>
                                 <td data-label="Vendor">{inv.vendors?.name ?? "—"}</td>
-                                <td data-label="Description">{inv.description || "—"}</td>
+                                <td data-label="Description">
+                                  <Link to={`/projects/${projectId}/invoices/${inv.id}`}>{inv.description || "Open"}</Link>
+                                </td>
                                 <td data-label="Amount">{money(inv.amount)}</td>
                               </tr>
                             ))}

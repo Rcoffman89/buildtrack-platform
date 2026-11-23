@@ -14,6 +14,7 @@ import AdminUsers from "./pages/AdminUsers.jsx";
 import WeeklyBriefing from "./pages/WeeklyBriefing.jsx";
 import Vendors from "./pages/Vendors.jsx";
 import Invoices from "./pages/Invoices.jsx";
+import InvoiceDetail from "./pages/InvoiceDetail.jsx";
 import GlCodes from "./pages/GlCodes.jsx";
 import Rfps from "./pages/Rfps.jsx";
 import RfpDetail from "./pages/RfpDetail.jsx";
@@ -44,6 +45,7 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="tasks/:id" element={<TaskDetail />} />
               <Route path="invoices" element={<Invoices />} />
+              <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
               <Route path="rfps" element={<Rfps />} />
               <Route path="rfps/:id" element={<RfpDetail />} />
               <Route path="audit" element={<AuditLog />} />

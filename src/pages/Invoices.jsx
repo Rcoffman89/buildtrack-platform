@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { CATEGORY_OPTIONS } from "../lib/categories.js";
-
-function invoiceFilePath(organizationId, projectId, file) {
-  return `${organizationId}/${projectId}/${crypto.randomUUID()}-${file.name}`;
-}
+import { uploadInvoiceFile } from "../lib/invoicePhoto.js";
 
 export default function Invoices() {
   const { projectId } = useParams();
@@ -39,6 +36,8 @@ export default function Invoices() {
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState({});
+  const [justSaved, setJustSaved] = useState(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   useEffect(() => {
     load();
@@ -70,11 +69,11 @@ export default function Invoices() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+    setJustSaved(null);
 
     let filePath = null;
     if (file) {
-      const path = invoiceFilePath(organizationId, projectId, file);
-      const { error: uploadError } = await supabase.storage.from("invoices").upload(path, file);
+      const { path, error: uploadError } = await uploadInvoiceFile(organizationId, projectId, file);
       if (uploadError) {
         setSubmitting(false);
         setError(uploadError.message);
@@ -83,7 +82,7 @@ export default function Invoices() {
       filePath = path;
     }
 
-    const { error: insertError } = await supabase.from("invoices").insert({
+    const { data: inserted, error: insertError } = await supabase.from("invoices").insert({
       organization_id: organizationId,
       project_id: projectId,
       task_id: taskId || null,
@@ -93,7 +92,7 @@ export default function Invoices() {
       description: description || null,
       category: category || null,
       file_path: filePath,
-    });
+    }).select("id,amount,category").single();
 
     setSubmitting(false);
     if (insertError) {
@@ -107,6 +106,8 @@ export default function Invoices() {
     setDescription("");
     setCategory(preselectedCategory);
     setFile(null);
+    setFileInputKey((k) => k + 1);
+    setJustSaved(inserted);
     load();
   }
 
@@ -235,41 +236,29 @@ export default function Invoices() {
     <div>
       <h1>Invoices</h1>
 
-      <form onSubmit={handleCreate} className="task-form" style={{ marginBottom: 28 }}>
-        <label htmlFor="inv-task">Task (optional)</label>
-        <select id="inv-task" value={taskId} onChange={(e) => handleTaskChange(e.target.value)}>
-          <option value="">— Project-level, no specific task —</option>
-          {tasks.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title}
-            </option>
-          ))}
-        </select>
+      <form onSubmit={handleCreate} className="task-form quick-add" style={{ marginBottom: 28 }}>
+        <h3 style={{ margin: "0 0 4px" }}>Add an expense</h3>
+        <p className="task-meta" style={{ margin: "0 0 8px" }}>
+          Snap the invoice, enter the total, pick a category. Line items can be added later.
+        </p>
 
-        <label htmlFor="inv-category">Category</label>
-        <select id="inv-category" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">— None —</option>
-          {CATEGORY_OPTIONS.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <label className="camera-btn">
+          {file ? `Photo: ${file.name}` : "Take photo of invoice"}
+          <input
+            key={fileInputKey}
+            id="inv-file"
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            onChange={(e) => setFile(e.target.files[0] ?? null)}
+          />
+        </label>
 
-        <label htmlFor="inv-vendor">Vendor (optional)</label>
-        <select id="inv-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-          <option value="">— None —</option>
-          {vendors.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name} ({v.trade})
-            </option>
-          ))}
-        </select>
-
-        <label htmlFor="inv-amount">Amount ($)</label>
+        <label htmlFor="inv-amount">Total ($)</label>
         <input
           id="inv-amount"
           type="number"
+          inputMode="decimal"
           required
           min="0"
           step="0.01"
@@ -277,20 +266,59 @@ export default function Invoices() {
           onChange={(e) => setAmount(e.target.value)}
         />
 
-        <label htmlFor="inv-date">Invoice date</label>
-        <input id="inv-date" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+        <label htmlFor="inv-category">Category</label>
+        <select id="inv-category" required value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">— Pick a category —</option>
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
-        <label htmlFor="inv-desc">Description</label>
-        <input id="inv-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <details className="more-details">
+          <summary>More details (optional)</summary>
 
-        <label htmlFor="inv-file">Invoice file (PDF or image)</label>
-        <input id="inv-file" type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files[0] ?? null)} />
+          <label htmlFor="inv-vendor">Vendor</label>
+          <select id="inv-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+            <option value="">— None —</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name} ({v.trade})
+              </option>
+            ))}
+          </select>
+
+          <label htmlFor="inv-date">Invoice date</label>
+          <input id="inv-date" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+
+          <label htmlFor="inv-task">Task</label>
+          <select id="inv-task" value={taskId} onChange={(e) => handleTaskChange(e.target.value)}>
+            <option value="">— Project-level, no specific task —</option>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+
+          <label htmlFor="inv-desc">Description</label>
+          <input id="inv-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </details>
 
         {error && <p className="auth-error">{error}</p>}
 
         <button type="submit" disabled={submitting}>
-          {submitting ? "Adding…" : "Add invoice"}
+          {submitting ? "Saving…" : "Save expense"}
         </button>
+
+        {justSaved && (
+          <p className="task-meta" style={{ margin: "8px 0 0" }}>
+            Saved ${Number(justSaved.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {justSaved.category ? ` to ${justSaved.category}` : ""}.{" "}
+            <Link to={`/projects/${projectId}/invoices/${justSaved.id}`}>Open it to add line items</Link>
+          </p>
+        )}
       </form>
 
       {invoices && invoices.length > 0 && (
@@ -446,6 +474,9 @@ export default function Invoices() {
                     )}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
+                    <Link to={`/projects/${projectId}/invoices/${inv.id}`} style={{ marginRight: 8 }}>
+                      Open
+                    </Link>
                     <button onClick={() => startEdit(inv)}>Edit</button>
                     <button onClick={() => handleDelete(inv)} style={{ marginLeft: 6 }}>
                       Delete
