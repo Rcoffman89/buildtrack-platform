@@ -1,0 +1,177 @@
+import { createClient } from "@supabase/supabase-js";
+
+// Monday-morning spend update: for each active project, total spend vs budget, the breakdown by
+// budget category, and the expenses (invoices) added in the last 7 days. Sent with the same
+// Resend setup the RFP invites use.
+//
+// Netlify environment variables:
+//   WEEKLY_SPEND_RECIPIENTS  required, comma-separated email addresses
+//   WEEKLY_SPEND_ORG_ID      optional, only report this organization's projects
+//   RESEND_API_KEY / RESEND_FROM_ADDRESS / VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+//                            already used by the other functions
+//
+// Schedule: 13:00 UTC Mondays = 8 AM Eastern in winter, 9 AM in summer. Netlify can also run it
+// on demand from the Functions page ("Run now") to test.
+
+const CATEGORY_ORDER = [
+  "Design",
+  "Approvals/Permits",
+  "Sitework",
+  "Foundation",
+  "Structural",
+  "MEP",
+  "Interior Finishes",
+  "FF&E",
+  "Long-lead Equipment",
+  "Closeout",
+  "Contingency",
+  "Other",
+];
+
+function money(n) {
+  return `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const cell = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:left"';
+const cellR = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:right"';
+
+function projectSection(project, targets, invoices, siteUrl, since) {
+  const byCat = {};
+  for (const inv of invoices) {
+    const cat = inv.category || "Uncategorized";
+    byCat[cat] = (byCat[cat] || 0) + Number(inv.amount);
+  }
+  const targetByCat = Object.fromEntries(targets.map((t) => [t.category, Number(t.target_amount)]));
+  const totalSpent = invoices.reduce((s, i) => s + Number(i.amount), 0);
+  const totalBudget = targets.reduce((s, t) => s + Number(t.target_amount), 0);
+  const pct = totalBudget ? Math.round((totalSpent / totalBudget) * 100) : null;
+
+  const cats = [...CATEGORY_ORDER, ...(byCat.Uncategorized ? ["Uncategorized"] : [])].filter(
+    (c) => targetByCat[c] != null || byCat[c]
+  );
+  const catRows = cats
+    .map((c) => {
+      const t = targetByCat[c];
+      const a = byCat[c] || 0;
+      const over = t != null && a > t;
+      const spentCell = over ? cellR.replace('text-align:right"', 'text-align:right;color:#a13a2c"') : cellR;
+      return `<tr><td ${cell}>${esc(c)}</td><td ${cellR}>${t != null ? money(t) : "—"}</td><td ${spentCell}>${money(
+        a
+      )}</td><td ${cellR}>${t != null ? money(t - a) : "—"}</td></tr>`;
+    })
+    .join("");
+
+  const recent = invoices
+    .filter((i) => i.created_at >= since)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const recentTotal = recent.reduce((s, i) => s + Number(i.amount), 0);
+  const recentRows = recent
+    .map(
+      (i) =>
+        `<tr><td ${cell}>${esc(i.invoice_date || i.created_at.slice(0, 10))}</td><td ${cell}>${esc(
+          i.vendors?.name || "—"
+        )}</td><td ${cell}>${esc(i.category || "Uncategorized")}</td><td ${cell}>${esc(
+          i.description || ""
+        )}</td><td ${cellR}>${money(i.amount)}</td></tr>`
+    )
+    .join("");
+
+  const link = `${siteUrl}/projects/${project.id}`;
+  return `
+  <h2 style="margin:24px 0 4px">${esc(project.name)}</h2>
+  <p style="margin:0 0 12px;font-size:16px"><strong>${money(totalSpent)}</strong> spent${
+    totalBudget ? ` of ${money(totalBudget)} budget (${pct}%)` : ""
+  }. ${recent.length ? `${money(recentTotal)} added in the last 7 days.` : "Nothing new in the last 7 days."}</p>
+  ${
+    catRows
+      ? `<table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    <tr><th ${cell}>Category</th><th ${cellR}>Budget</th><th ${cellR}>Spent</th><th ${cellR}>Remaining</th></tr>
+    ${catRows}</table>`
+      : ""
+  }
+  ${
+    recent.length
+      ? `<h3 style="margin:12px 0 4px;font-size:15px">New this week</h3>
+  <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    <tr><th ${cell}>Date</th><th ${cell}>Vendor</th><th ${cell}>Category</th><th ${cell}>Description</th><th ${cellR}>Amount</th></tr>
+    ${recentRows}</table>`
+      : ""
+  }
+  <p style="margin:0"><a href="${esc(link)}">Open ${esc(project.name)} in BuildTrack</a></p>`;
+}
+
+export default async () => {
+  const recipients = (process.env.WEEKLY_SPEND_RECIPIENTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!recipients.length) {
+    console.log("weekly-spend: WEEKLY_SPEND_RECIPIENTS not set, nothing sent");
+    return;
+  }
+  if (!process.env.RESEND_API_KEY) {
+    console.log("weekly-spend: RESEND_API_KEY not set, nothing sent");
+    return;
+  }
+
+  const admin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const siteUrl = process.env.URL || "https://buildtrack-montego-platform.netlify.app";
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  let projectQuery = admin.from("projects").select("id,name,status,organization_id").neq("status", "Complete").order("name");
+  if (process.env.WEEKLY_SPEND_ORG_ID) projectQuery = projectQuery.eq("organization_id", process.env.WEEKLY_SPEND_ORG_ID);
+  const { data: projects, error: projErr } = await projectQuery;
+  if (projErr) {
+    console.error("weekly-spend: projects query failed", projErr.message);
+    return;
+  }
+
+  const sections = [];
+  for (const project of projects ?? []) {
+    const [{ data: targets }, { data: invoices }] = await Promise.all([
+      admin.from("project_category_budgets").select("category,target_amount").eq("project_id", project.id),
+      admin
+        .from("invoices")
+        .select("amount,category,invoice_date,description,created_at,vendors(name)")
+        .eq("project_id", project.id),
+    ]);
+    // Skip projects with no budget and no spend: nothing to report.
+    if (!(targets ?? []).length && !(invoices ?? []).length) continue;
+    sections.push(projectSection(project, targets ?? [], invoices ?? [], siteUrl, since));
+  }
+  if (!sections.length) {
+    console.log("weekly-spend: no projects with a budget or spend, nothing sent");
+    return;
+  }
+
+  const today = new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
+  const html = `<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#16232f;max-width:720px">
+  <h1 style="font-size:20px;margin:0">Weekly spend update, ${esc(today)}</h1>
+  ${sections.join("")}
+  </div>`;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_ADDRESS || "BuildTrack <onboarding@resend.dev>",
+      to: recipients,
+      subject: `BuildTrack weekly spend, ${today}`,
+      html,
+    }),
+  });
+  if (!res.ok) console.error("weekly-spend: send failed", res.status, await res.text());
+  else console.log(`weekly-spend: sent to ${recipients.length} recipient(s)`);
+};
+
+export const config = {
+  schedule: "0 13 * * 1",
+};
