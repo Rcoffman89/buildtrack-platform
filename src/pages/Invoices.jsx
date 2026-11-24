@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { CATEGORY_OPTIONS } from "../lib/categories.js";
-import { uploadInvoiceFile } from "../lib/invoicePhoto.js";
+import {
+  attachInvoicePhotos,
+  discardUploadedFiles,
+  extraPhotoPaths,
+  isMissingTableError,
+  uploadInvoiceFiles,
+} from "../lib/invoicePhoto.js";
+import { PhotoPicker, PhotoTile } from "../components/PhotoPicker.jsx";
 
 export default function Invoices() {
   const { projectId } = useParams();
@@ -33,15 +40,47 @@ export default function Invoices() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(preselectedCategory);
   const [categoryFilter, setCategoryFilter] = useState(initialFilter);
-  const [file, setFile] = useState(null);
+  // Photos picked for the new expense, in order: { id, file, url } where url is a local preview.
+  const [photos, setPhotos] = useState([]);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState("");
   const [editing, setEditing] = useState({});
   const [justSaved, setJustSaved] = useState(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
+  const [notice, setNotice] = useState("");
+  // Extra photos per invoice (beyond file_path), and whether the extra-photos table exists yet.
+  const [extraCounts, setExtraCounts] = useState({});
+  const [extraPhotosReady, setExtraPhotosReady] = useState(true);
 
   useEffect(() => {
     load();
   }, [projectId]);
+
+  // Free the local previews when leaving the page.
+  useEffect(() => () => photosRef.current.forEach((p) => p.url && URL.revokeObjectURL(p.url)), []);
+
+  function addPhotos(files) {
+    const added = files.map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file,
+      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : "",
+    }));
+    setPhotos((current) => [...current, ...added]);
+  }
+
+  function dropPhoto(id) {
+    setPhotos((current) => {
+      const gone = current.find((p) => p.id === id);
+      if (gone?.url) URL.revokeObjectURL(gone.url);
+      return current.filter((p) => p.id !== id);
+    });
+  }
+
+  function clearPhotos() {
+    photos.forEach((p) => p.url && URL.revokeObjectURL(p.url));
+    setPhotos([]);
+  }
 
   async function load() {
     const { data, error } = await supabase
@@ -51,6 +90,17 @@ export default function Invoices() {
       .order("invoice_date", { ascending: false });
     if (error) setError(error.message);
     else setInvoices(data);
+
+    // Count each invoice's extra photos. If the table isn't there yet (database script not run),
+    // invoices just show their one photo as before.
+    const { data: extraData, error: extraError } = await supabase
+      .from("invoice_attachments")
+      .select("invoice_id")
+      .in("invoice_id", (data ?? []).map((inv) => inv.id));
+    setExtraPhotosReady(!(extraError && isMissingTableError(extraError)));
+    const counts = {};
+    for (const row of extraError ? [] : extraData ?? []) counts[row.invoice_id] = (counts[row.invoice_id] ?? 0) + 1;
+    setExtraCounts(counts);
 
     const { data: taskData } = await supabase.from("tasks").select("id,title,category").eq("project_id", projectId).order("title");
     setTasks(taskData ?? []);
@@ -70,16 +120,20 @@ export default function Invoices() {
     setSubmitting(true);
     setError("");
     setJustSaved(null);
+    setNotice("");
 
-    let filePath = null;
-    if (file) {
-      const { path, error: uploadError } = await uploadInvoiceFile(organizationId, projectId, file);
-      if (uploadError) {
-        setSubmitting(false);
-        setError(uploadError.message);
-        return;
-      }
-      filePath = path;
+    const { paths, error: uploadError } = await uploadInvoiceFiles(
+      organizationId,
+      projectId,
+      photos.map((p) => p.file),
+      (n, total) => setProgress(total > 1 ? `Uploading photo ${n} of ${total}…` : "Uploading photo…")
+    );
+    setProgress("");
+    if (uploadError) {
+      await discardUploadedFiles(paths);
+      setSubmitting(false);
+      setError(uploadError.message);
+      return;
     }
 
     const { data: inserted, error: insertError } = await supabase.from("invoices").insert({
@@ -91,22 +145,36 @@ export default function Invoices() {
       invoice_date: invoiceDate || null,
       description: description || null,
       category: category || null,
-      file_path: filePath,
-    }).select("id,amount,category").single();
+      file_path: paths[0] ?? null,
+    }).select("id,amount,category,file_path").single();
 
-    setSubmitting(false);
     if (insertError) {
+      await discardUploadedFiles(paths);
+      setSubmitting(false);
       setError(insertError.message);
       return;
     }
+
+    // First photo is on the invoice itself; any more go in invoice_attachments.
+    if (paths.length > 1) {
+      const result = await attachInvoicePhotos(organizationId, inserted, paths.slice(1));
+      if (result.unavailable) {
+        setNotice(
+          "Saved with the first photo only. More than one photo per expense needs the database script " +
+            "supabase/migrations/0017_invoice_attachments.sql run once in the Supabase SQL editor."
+        );
+      } else if (result.error) {
+        setNotice(`Saved, but the extra photos didn't attach: ${result.error.message}. Open the expense to add them again.`);
+      }
+    }
+    setSubmitting(false);
     setTaskId("");
     setVendorId("");
     setAmount("");
     setInvoiceDate("");
     setDescription("");
     setCategory(preselectedCategory);
-    setFile(null);
-    setFileInputKey((k) => k + 1);
+    clearPhotos();
     setJustSaved(inserted);
     load();
   }
@@ -214,15 +282,31 @@ export default function Invoices() {
 
   async function handleDelete(invoice) {
     if (!window.confirm(`Delete this ${invoice.amount ? `$${invoice.amount} ` : ""}invoice? This can't be undone.`)) return;
-    if (invoice.file_path) {
-      await supabase.storage.from("invoices").remove([invoice.file_path]);
-    }
+    // Note every photo first (the extra-photo rows go with the invoice), delete the invoice, then
+    // its files, so a failed delete never leaves an invoice pointing at missing photos.
+    const extras = await extraPhotoPaths([invoice.id]);
+    const filePaths = [invoice.file_path, ...extras.map((x) => x.file_path)].filter(Boolean);
     const { error } = await supabase.from("invoices").delete().eq("id", invoice.id);
     if (error) {
       setError(error.message);
       return;
     }
+    await discardUploadedFiles(filePaths);
     load();
+  }
+
+  // One photo opens straight away; several open the expense page, which shows them all.
+  function renderFileCell(inv) {
+    const count = (inv.file_path ? 1 : 0) + (extraCounts[inv.id] ?? 0);
+    if (count === 0) return "—";
+    if (count === 1 && inv.file_path) {
+      return (
+        <button className="link-btn" onClick={() => handleView(inv)}>
+          View
+        </button>
+      );
+    }
+    return <Link to={`/projects/${projectId}/invoices/${inv.id}`}>View {count} photos</Link>;
   }
 
   const visibleInvoices = (invoices ?? []).filter((inv) => {
@@ -242,17 +326,28 @@ export default function Invoices() {
           Snap the invoice, enter the total, pick a category. Line items can be added later.
         </p>
 
-        <label className="camera-btn">
-          {file ? `Photo: ${file.name}` : "Take photo of invoice"}
-          <input
-            key={fileInputKey}
-            id="inv-file"
-            type="file"
-            accept="image/*,application/pdf"
-            capture="environment"
-            onChange={(e) => setFile(e.target.files[0] ?? null)}
-          />
-        </label>
+        <PhotoPicker onPick={addPhotos} hasPhotos={photos.length > 0} disabled={submitting} />
+        {photos.length > 0 && (
+          <>
+            <div className="photo-thumbs">
+              {photos.map((p, i) => (
+                <PhotoTile
+                  key={p.id}
+                  src={p.url}
+                  label={`photo ${i + 1}`}
+                  isPdf={p.file.type === "application/pdf"}
+                  onRemove={submitting ? undefined : () => dropPhoto(p.id)}
+                />
+              ))}
+            </div>
+            <p className="task-meta photo-picked">
+              {photos.length} {photos.length === 1 ? "photo" : "photos"} attached.
+              {photos.length > 1 && !extraPhotosReady
+                ? " Only the first will be saved until the photo database script is run."
+                : ""}
+            </p>
+          </>
+        )}
 
         <label htmlFor="inv-amount">Total ($)</label>
         <input
@@ -309,8 +404,9 @@ export default function Invoices() {
         {error && <p className="auth-error">{error}</p>}
 
         <button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : "Save expense"}
+          {submitting ? progress || "Saving…" : "Save expense"}
         </button>
+        {notice && <p className="auth-error">{notice}</p>}
 
         {justSaved && (
           <p className="task-meta" style={{ margin: "8px 0 0" }}>
@@ -322,7 +418,7 @@ export default function Invoices() {
       </form>
 
       {invoices && invoices.length > 0 && (
-        <div className="budget-card" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="budget-card export-range" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div>
             <label htmlFor="export-start" style={{ margin: "0 0 4px" }}>
               From
@@ -439,13 +535,7 @@ export default function Invoices() {
                       />
                     </td>
                     <td data-label="File">
-                      {inv.file_path ? (
-                        <button className="link-btn" onClick={() => handleView(inv)}>
-                          View
-                        </button>
-                      ) : (
-                        "—"
-                      )}
+                      {renderFileCell(inv)}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <button onClick={() => saveEdit(inv.id)}>Save</button>
@@ -465,13 +555,7 @@ export default function Invoices() {
                   <td data-label="Category">{inv.category ?? "—"}</td>
                   <td data-label="Description">{inv.description}</td>
                   <td data-label="File">
-                    {inv.file_path ? (
-                      <button className="link-btn" onClick={() => handleView(inv)}>
-                        View
-                      </button>
-                    ) : (
-                      "—"
-                    )}
+                    {renderFileCell(inv)}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <Link to={`/projects/${projectId}/invoices/${inv.id}`} style={{ marginRight: 8 }}>

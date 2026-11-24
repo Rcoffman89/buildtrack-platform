@@ -1166,6 +1166,85 @@ label {
 .camera-btn input[type="file"] {
   display: none;
 }
+/* Take photo (camera) and Choose existing (photo library / files) side by side. */
+.photo-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.photo-pick .camera-btn {
+  margin: 0;
+  min-width: 0;
+}
+.camera-btn-alt {
+  border-style: solid;
+  border-color: var(--line);
+  background: none;
+}
+.camera-btn.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.photo-picked {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+/* Previews of the photos picked for a new expense, each with a remove (×) button. */
+.photo-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.photo-tile {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.photo-tile > a {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.photo-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.photo-tile-file {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.photo-tile-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 18px;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+}
 .more-details {
   margin: 8px 0 12px;
 }
@@ -1187,6 +1266,28 @@ label {
   max-height: 70vh;
   margin: 0 auto;
   border-radius: 6px;
+}
+/* Several photos on one expense stack, one under the other, like the pages of the invoice. */
+.invoice-photo-item + .invoice-photo-item {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.invoice-photo-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 0;
+}
+.invoice-photo-meta .link-btn {
+  margin-left: auto;
+}
+.invoice-photo-add {
+  margin-top: 14px;
+}
+.invoice-photo-add .photo-pick {
+  margin: 0;
 }
 .line-item-form {
   display: grid;
@@ -1309,6 +1410,13 @@ label {
     min-width: 0;
     flex: 1 1 220px;
   }
+
+  /* Invoice export From/To: give each date its own share of the row so the two fields can't
+     run into each other. */
+  .export-range > div {
+    flex: 1 1 130px;
+    min-width: 0;
+  }
 }
 
 /* Timeline: a narrower task-name column on phones leaves more of the chart visible. */
@@ -1346,7 +1454,7 @@ label {
 
 /* Touch screens: finger-sized tap targets. */
 @media (pointer: coarse) {
-  button:not(.link-btn):not(.notif-bell):not(.stat-tile) {
+  button:not(.link-btn):not(.notif-bell):not(.stat-tile):not(.photo-tile-remove) {
     min-height: 40px;
   }
 

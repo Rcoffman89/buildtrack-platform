@@ -3,15 +3,19 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { CATEGORY_OPTIONS } from "../lib/categories.js";
-import { isPdfPath, uploadInvoiceFile } from "../lib/invoicePhoto.js";
+import {
+  attachInvoicePhotos,
+  isMissingTableError,
+  isPdfPath,
+  loadInvoicePhotos,
+  removeInvoicePhoto,
+  uploadInvoiceFiles,
+  discardUploadedFiles,
+} from "../lib/invoicePhoto.js";
+import { PhotoPicker } from "../components/PhotoPicker.jsx";
 
 function money(n) {
   return `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function isMissingTable(error) {
-  const msg = `${error?.code ?? ""} ${error?.message ?? ""}`;
-  return /42P01|PGRST205|does not exist|Could not find the table/i.test(msg);
 }
 
 const EMPTY_LINE = { description: "", quantity: "", unit_price: "", amount: "" };
@@ -21,13 +25,16 @@ export default function InvoiceDetail() {
   const { organizationId } = useAuth();
 
   const [invoice, setInvoice] = useState(null);
-  const [fileUrl, setFileUrl] = useState("");
+  // Every photo on the invoice, first one first: { id, file_path, url }.
+  const [photos, setPhotos] = useState([]);
+  const [extraPhotosUnavailable, setExtraPhotosUnavailable] = useState(false);
   const [lines, setLines] = useState([]);
   const [linesUnavailable, setLinesUnavailable] = useState(false);
   const [error, setError] = useState("");
   const [newLine, setNewLine] = useState(EMPTY_LINE);
   const [savingLine, setSavingLine] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState("");
+  const [notice, setNotice] = useState("");
   const [category, setCategory] = useState("");
 
   useEffect(() => {
@@ -48,12 +55,10 @@ export default function InvoiceDetail() {
     setInvoice(data);
     setCategory(data.category ?? "");
 
-    if (data.file_path) {
-      const { data: signed } = await supabase.storage.from("invoices").createSignedUrl(data.file_path, 3600);
-      setFileUrl(signed?.signedUrl ?? "");
-    } else {
-      setFileUrl("");
-    }
+    const photoResult = await loadInvoicePhotos(data);
+    setPhotos(photoResult.photos);
+    setExtraPhotosUnavailable(photoResult.unavailable);
+    if (photoResult.error) setError(photoResult.error.message);
 
     const { data: lineData, error: lineError } = await supabase
       .from("invoice_line_items")
@@ -62,7 +67,7 @@ export default function InvoiceDetail() {
       .order("sort_order")
       .order("created_at");
     if (lineError) {
-      if (isMissingTable(lineError)) setLinesUnavailable(true);
+      if (isMissingTableError(lineError)) setLinesUnavailable(true);
       else setError(lineError.message);
       setLines([]);
     } else {
@@ -71,20 +76,51 @@ export default function InvoiceDetail() {
     }
   }
 
-  async function handleAddPhoto(file) {
-    if (!file) return;
-    setUploading(true);
+  // Adds one or more photos to the invoice (camera shots one at a time, or several from the
+  // library). The first photo goes on the invoice itself, the rest in invoice_attachments.
+  async function handleAddPhotos(files) {
+    if (files.length === 0) return;
     setError("");
-    const { path, error: uploadError } = await uploadInvoiceFile(organizationId, projectId, file);
+    setNotice("");
+    // Without the extra-photos table only one photo fits, and only if there's none yet.
+    let toUpload = files;
+    if (extraPhotosUnavailable) {
+      if (invoice.file_path) {
+        setNotice(
+          "More than one photo per expense needs the database script " +
+            "supabase/migrations/0017_invoice_attachments.sql run once in the Supabase SQL editor."
+        );
+        return;
+      }
+      toUpload = files.slice(0, 1);
+    }
+    const { paths, error: uploadError } = await uploadInvoiceFiles(organizationId, projectId, toUpload, (n, total) =>
+      setUploading(total > 1 ? `Uploading photo ${n} of ${total}…` : "Uploading photo…")
+    );
     if (uploadError) {
-      setUploading(false);
+      await discardUploadedFiles(paths);
+      setUploading("");
       setError(uploadError.message);
       return;
     }
-    const { error: updateError } = await supabase.from("invoices").update({ file_path: path }).eq("id", invoiceId);
-    setUploading(false);
-    if (updateError) {
-      setError(updateError.message);
+    const result = await attachInvoicePhotos(organizationId, invoice, paths);
+    setUploading("");
+    if (result.error) setError(result.error.message);
+    if (result.unavailable || (extraPhotosUnavailable && files.length > 1)) {
+      setNotice(
+        "Only the first photo was saved. More than one photo per expense needs the database script " +
+          "supabase/migrations/0017_invoice_attachments.sql run once in the Supabase SQL editor."
+      );
+    }
+    load();
+  }
+
+  async function handleRemovePhoto(photo, index) {
+    if (!window.confirm(`Remove photo ${index + 1} from this expense? This can't be undone.`)) return;
+    setError("");
+    const { error } = await removeInvoicePhoto(invoice, photo, photos);
+    if (error) {
+      setError(error.message);
       return;
     }
     load();
@@ -177,33 +213,40 @@ export default function InvoiceDetail() {
       </div>
 
       <div className="budget-card invoice-photo">
-        {fileUrl ? (
-          isPdfPath(invoice.file_path) ? (
-            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-              Open invoice PDF
-            </a>
-          ) : (
-            <a href={fileUrl} target="_blank" rel="noopener noreferrer" title="Open full size">
-              <img src={fileUrl} alt="Invoice" />
-            </a>
-          )
-        ) : (
-          <>
-            <p className="task-meta" style={{ marginTop: 0 }}>
-              No photo attached.
-            </p>
-            <label className="camera-btn">
-              {uploading ? "Uploading…" : "Take or add photo"}
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                capture="environment"
-                disabled={uploading}
-                onChange={(e) => handleAddPhoto(e.target.files[0] ?? null)}
-              />
-            </label>
-          </>
+        {photos.length === 0 && (
+          <p className="task-meta" style={{ marginTop: 0 }}>
+            No photo attached.
+          </p>
         )}
+        {photos.map((photo, i) => (
+          <div key={photo.file_path} className="invoice-photo-item">
+            {!photo.url ? (
+              <p className="task-meta">This photo couldn't be loaded.</p>
+            ) : isPdfPath(photo.file_path) ? (
+              <a href={photo.url} target="_blank" rel="noopener noreferrer">
+                Open invoice PDF
+              </a>
+            ) : (
+              <a href={photo.url} target="_blank" rel="noopener noreferrer" title="Open full size">
+                <img src={photo.url} alt={`Invoice photo ${i + 1}`} />
+              </a>
+            )}
+            <p className="task-meta invoice-photo-meta">
+              {photos.length > 1 ? `Photo ${i + 1} of ${photos.length}` : ""}
+              <button type="button" className="link-btn" onClick={() => handleRemovePhoto(photo, i)}>
+                Remove
+              </button>
+            </p>
+          </div>
+        ))}
+        {uploading ? (
+          <p className="task-meta">{uploading}</p>
+        ) : (
+          <div className="invoice-photo-add">
+            <PhotoPicker onPick={handleAddPhotos} hasPhotos={photos.length > 0} />
+          </div>
+        )}
+        {notice && <p className="auth-error">{notice}</p>}
       </div>
 
       <h3 style={{ margin: "20px 0 8px" }}>Line items</h3>
