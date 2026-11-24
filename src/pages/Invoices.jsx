@@ -11,6 +11,8 @@ import {
   uploadInvoiceFiles,
 } from "../lib/invoicePhoto.js";
 import { PhotoPicker, PhotoTile } from "../components/PhotoPicker.jsx";
+import QuickbooksExport from "../components/QuickbooksExport.jsx";
+import InvoiceStatus from "../components/InvoiceStatus.jsx";
 
 export default function Invoices() {
   const { projectId } = useParams();
@@ -30,8 +32,8 @@ export default function Invoices() {
   const [glMappings, setGlMappings] = useState({});
   const [error, setError] = useState("");
 
-  const [exportStart, setExportStart] = useState("");
-  const [exportEnd, setExportEnd] = useState("");
+  // "" all, "due", "paid", "not_exported", "exported". Needs migration 0018's columns.
+  const [statusFilter, setStatusFilter] = useState("");
 
   const [taskId, setTaskId] = useState(preselectedTaskId);
   const [vendorId, setVendorId] = useState("");
@@ -242,44 +244,6 @@ export default function Invoices() {
     load();
   }
 
-  function csvEscape(value) {
-    const str = String(value ?? "");
-    if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
-    return str;
-  }
-
-  function handleExport() {
-    const filtered = invoices.filter((inv) => {
-      if (exportStart && (!inv.invoice_date || inv.invoice_date < exportStart)) return false;
-      if (exportEnd && (!inv.invoice_date || inv.invoice_date > exportEnd)) return false;
-      return true;
-    });
-
-    const rows = [["Date", "Project", "Vendor", "Category", "GL Code", "Description", "Amount"]];
-    for (const inv of filtered) {
-      const trade = inv.vendors?.trade;
-      rows.push([
-        inv.invoice_date ?? "",
-        projectName,
-        inv.vendors?.name ?? "",
-        inv.category ?? "",
-        (trade && glMappings[trade]) || "",
-        inv.description ?? "",
-        Number(inv.amount).toFixed(2),
-      ]);
-    }
-
-    const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const rangeLabel = exportStart || exportEnd ? `_${exportStart || "start"}_to_${exportEnd || "end"}` : "";
-    link.href = url;
-    link.download = `invoices-${projectName || "export"}${rangeLabel}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   async function handleDelete(invoice) {
     if (!window.confirm(`Delete this ${invoice.amount ? `$${invoice.amount} ` : ""}invoice? This can't be undone.`)) return;
     // Note every photo first (the extra-photo rows go with the invoice), delete the invoice, then
@@ -309,12 +273,22 @@ export default function Invoices() {
     return <Link to={`/projects/${projectId}/invoices/${inv.id}`}>View {count} photos</Link>;
   }
 
+  // Paid and exported status only shows once migration 0018 has added its columns.
+  const statusReady = Boolean(invoices?.length) && "paid_date" in invoices[0];
+
   const visibleInvoices = (invoices ?? []).filter((inv) => {
-    if (!categoryFilter) return true;
-    if (categoryFilter === "__none__") return !inv.category;
-    return inv.category === categoryFilter;
+    if (categoryFilter === "__none__" && inv.category) return false;
+    if (categoryFilter && categoryFilter !== "__none__" && inv.category !== categoryFilter) return false;
+    if (statusReady) {
+      if (statusFilter === "due" && inv.paid_date) return false;
+      if (statusFilter === "paid" && !inv.paid_date) return false;
+      if (statusFilter === "not_exported" && inv.qb_exported_at) return false;
+      if (statusFilter === "exported" && !inv.qb_exported_at) return false;
+    }
+    return true;
   });
   const visibleTotal = visibleInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  const visibleDue = visibleInvoices.filter((inv) => !inv.paid_date).reduce((sum, inv) => sum + Number(inv.amount), 0);
 
   return (
     <div>
@@ -418,23 +392,14 @@ export default function Invoices() {
       </form>
 
       {invoices && invoices.length > 0 && (
-        <div className="budget-card export-range" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
-            <label htmlFor="export-start" style={{ margin: "0 0 4px" }}>
-              From
-            </label>
-            <input id="export-start" type="date" value={exportStart} onChange={(e) => setExportStart(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="export-end" style={{ margin: "0 0 4px" }}>
-              To
-            </label>
-            <input id="export-end" type="date" value={exportEnd} onChange={(e) => setExportEnd(e.target.value)} />
-          </div>
-          <button type="button" onClick={handleExport}>
-            Export CSV for accounting
-          </button>
-        </div>
+        <QuickbooksExport
+          invoices={invoices}
+          projectName={projectName}
+          glMappings={glMappings}
+          statusReady={statusReady}
+          onChanged={load}
+          onError={setError}
+        />
       )}
 
       {invoices && invoices.length > 0 && (
@@ -451,9 +416,20 @@ export default function Invoices() {
             ))}
             <option value="__none__">Uncategorized</option>
           </select>
+          {statusReady && (
+            <select aria-label="Paid or exported" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Paid and due</option>
+              <option value="due">Due only</option>
+              <option value="paid">Paid only</option>
+              <option value="not_exported">Not in QuickBooks yet</option>
+              <option value="exported">In QuickBooks</option>
+            </select>
+          )}
           <span className="task-meta">
             {visibleInvoices.length} invoice{visibleInvoices.length === 1 ? "" : "s"}, $
             {visibleTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {statusReady &&
+              `, $${visibleDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due`}
           </span>
         </div>
       )}
@@ -472,6 +448,7 @@ export default function Invoices() {
               <th>Category</th>
               <th>Description</th>
               <th>File</th>
+              {statusReady && <th>Status</th>}
               <th></th>
             </tr>
           </thead>
@@ -537,6 +514,11 @@ export default function Invoices() {
                     <td data-label="File">
                       {renderFileCell(inv)}
                     </td>
+                    {statusReady && (
+                      <td data-label="Status">
+                        <InvoiceStatus invoice={inv} onChanged={load} onError={setError} />
+                      </td>
+                    )}
                     <td style={{ whiteSpace: "nowrap" }}>
                       <button onClick={() => saveEdit(inv.id)}>Save</button>
                       <button onClick={() => cancelEdit(inv.id)} style={{ marginLeft: 6 }}>
@@ -557,6 +539,11 @@ export default function Invoices() {
                   <td data-label="File">
                     {renderFileCell(inv)}
                   </td>
+                  {statusReady && (
+                    <td data-label="Status">
+                      <InvoiceStatus invoice={inv} onChanged={load} onError={setError} />
+                    </td>
+                  )}
                   <td style={{ whiteSpace: "nowrap" }}>
                     <Link to={`/projects/${projectId}/invoices/${inv.id}`} style={{ marginRight: 8 }}>
                       Open
