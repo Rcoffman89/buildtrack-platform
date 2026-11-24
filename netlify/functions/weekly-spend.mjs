@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 // Monday-morning spend update: for each active project, total spend so far and spend by budget
-// category. No budget or target numbers (Ryan's call). Sent with the same Resend setup the RFP
+// category, plus what was spent in the past week (expenses dated in the 7 days before the send,
+// i.e. last Monday through Sunday). No budget or target numbers (Ryan's call). Sent with the same Resend setup the RFP
 // invites use.
 //
 // Netlify environment variables:
@@ -10,7 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 //   RESEND_API_KEY / RESEND_FROM_ADDRESS / VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 //                            already used by the other functions
 //
-// Schedule: 13:00 UTC Mondays = 8 AM Eastern in winter, 9 AM in summer. Netlify can also run it
+// Schedule: 11:00 UTC Mondays = 6 AM Eastern in winter, 7 AM in summer. Netlify can also run it
 // on demand from the Functions page ("Run now") to test.
 
 const CATEGORY_ORDER = [
@@ -43,24 +44,39 @@ function esc(s) {
 const cell = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:left"';
 const cellR = 'style="padding:4px 10px;border-bottom:1px solid #e3e6ea;text-align:right"';
 
-function projectSection(project, invoices, siteUrl) {
+// Eastern-time calendar date (YYYY-MM-DD), shifted by `days`.
+function easternDate(days = 0) {
+  const d = new Date(Date.now() + days * 86400000);
+  return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+function projectSection(project, invoices, siteUrl, weekStart, weekEnd) {
   const byCat = {};
+  const weekByCat = {};
   for (const inv of invoices) {
     const cat = inv.category || "Uncategorized";
     byCat[cat] = (byCat[cat] || 0) + Number(inv.amount);
+    if (inv.invoice_date && inv.invoice_date >= weekStart && inv.invoice_date <= weekEnd) {
+      weekByCat[cat] = (weekByCat[cat] || 0) + Number(inv.amount);
+    }
   }
   const totalSpent = invoices.reduce((s, i) => s + Number(i.amount), 0);
-  const cats = [...CATEGORY_ORDER, "Uncategorized"].filter((c) => byCat[c]);
+  const weekSpent = Object.values(weekByCat).reduce((s, v) => s + v, 0);
+  const cats = [...CATEGORY_ORDER, "Uncategorized"].filter((c) => byCat[c] || weekByCat[c]);
   const catRows = cats
-    .map((c) => `<tr><td ${cell}>${esc(c)}</td><td ${cellR}>${money(byCat[c])}</td></tr>`)
+    .map(
+      (c) =>
+        `<tr><td ${cell}>${esc(c)}</td><td ${cellR}>${weekByCat[c] ? money(weekByCat[c]) : "&ndash;"}</td><td ${cellR}>${money(byCat[c])}</td></tr>`
+    )
     .join("");
 
   const link = `${siteUrl}/projects/${project.id}`;
   return `
   <h2 style="margin:24px 0 4px">${esc(project.name)}</h2>
+  <p style="margin:0 0 4px;font-size:16px">Spent this past week: <strong>${money(weekSpent)}</strong></p>
   <p style="margin:0 0 12px;font-size:16px">Total spent so far: <strong>${money(totalSpent)}</strong></p>
   <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
-    <tr><th ${cell}>Category</th><th ${cellR}>Spent</th></tr>
+    <tr><th ${cell}>Category</th><th ${cellR}>Past week</th><th ${cellR}>Total spent</th></tr>
     ${catRows}</table>
   <p style="margin:0"><a href="${esc(link)}">Open ${esc(project.name)} in BuildTrack</a></p>`;
 }
@@ -90,12 +106,16 @@ export default async () => {
     return;
   }
 
+  // Past week = the 7 days before today (Eastern): last Monday through Sunday on a Monday send.
+  const weekStart = easternDate(-7);
+  const weekEnd = easternDate(-1);
+
   const sections = [];
   for (const project of projects ?? []) {
-    const { data: invoices } = await admin.from("invoices").select("amount,category").eq("project_id", project.id);
+    const { data: invoices } = await admin.from("invoices").select("amount,category,invoice_date").eq("project_id", project.id);
     // Skip projects with no spend yet: nothing to report.
     if (!(invoices ?? []).length) continue;
-    sections.push(projectSection(project, invoices, siteUrl));
+    sections.push(projectSection(project, invoices, siteUrl, weekStart, weekEnd));
   }
   if (!sections.length) {
     console.log("weekly-spend: no projects with spend yet, nothing sent");
@@ -123,5 +143,5 @@ export default async () => {
 };
 
 export const config = {
-  schedule: "0 13 * * 1",
+  schedule: "0 11 * * 1",
 };
