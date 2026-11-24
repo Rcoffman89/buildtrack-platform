@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
 
@@ -8,10 +8,30 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [unseenCount, setUnseenCount] = useState(0);
+  const wrapRef = useRef(null);
 
   useEffect(() => {
     load();
   }, []);
+
+  // Close the panel when tapping/clicking anywhere outside it or pressing Escape. On a phone
+  // the panel covers most of the screen, so without this the only way out was finding the
+  // bell again.
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointer(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    function handleKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
 
   async function load() {
     const { data } = await supabase
@@ -37,8 +57,14 @@ export default function NotificationBell() {
   }
 
   return (
-    <div className="notif-wrap">
-      <button className="notif-bell" onClick={handleToggle} title="Notifications">
+    <div className="notif-wrap" ref={wrapRef}>
+      <button
+        className="notif-bell"
+        onClick={handleToggle}
+        title="Notifications"
+        aria-label="Notifications"
+        aria-expanded={open}
+      >
         🔔
         {unseenCount > 0 && <span className="notif-badge">{unseenCount}</span>}
       </button>

@@ -278,7 +278,7 @@ export default function RfpDetail() {
             ))}
           </ul>
         )}
-        <form onSubmit={handleUploadDocs} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
+        <form onSubmit={handleUploadDocs} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8 }}>
           <input type="file" multiple accept="application/pdf,image/*" onChange={(e) => setExtraFiles([...e.target.files])} />
           <button type="submit" disabled={uploadingDocs || extraFiles.length === 0}>
             {uploadingDocs ? "Uploading…" : "Upload"}
@@ -335,7 +335,7 @@ export default function RfpDetail() {
           </table>
         )}
 
-        <form onSubmit={handleInviteVendor} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+        <form onSubmit={handleInviteVendor} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 12 }}>
           <select value={inviteVendorId} onChange={(e) => setInviteVendorId(e.target.value)} required>
             <option value="">— Select a vendor to invite —</option>
             {vendors.map((v) => (

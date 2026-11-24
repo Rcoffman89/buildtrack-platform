@@ -48,6 +48,12 @@
   box-sizing: border-box;
 }
 
+/* Stop iOS from inflating text sizes when a phone is turned sideways. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--ground);
@@ -92,6 +98,9 @@ textarea {
   color: var(--ink);
   width: 100%;
   max-width: 420px;
+  /* Lets a field shrink inside a flex row or grid cell instead of forcing it wider than the
+     screen (Safari's date fields are the usual culprit). */
+  min-width: 0;
 }
 
 /* Some browsers (notably Safari) apply their own native "textfield" chrome to
@@ -167,6 +176,18 @@ label {
 /* App shell */
 .app-shell {
   min-height: 100vh;
+}
+
+/* Phone safety net: at phone widths nothing should push the page wider than the screen
+   (tables become cards, the Gantt chart and tab strip scroll inside their own boxes), and if
+   something ever does, iOS lets the whole page slide sideways. `clip` (unlike `hidden`)
+   doesn't turn these into scroll containers. Phone-only, because on mid-size screens a wide
+   table still relies on the page scrolling sideways to reach its last columns. */
+@media (max-width: 640px) {
+  .app-shell,
+  .auth-screen {
+    overflow-x: clip;
+  }
 }
 
 .app-nav {
@@ -288,63 +309,6 @@ label {
   }
 }
 
-/* Responsive tables: below the breakpoint, every .task-table becomes a stack of cards instead
-   of a cramped table with wrapping columns. Each <td> needs a data-label attribute (the field
-   name) which renders as a label via ::before — this only affects layout below the breakpoint,
-   so it's inert at desktop widths. */
-@media (max-width: 640px) {
-  .task-table thead {
-    display: none;
-  }
-
-  .task-table,
-  .task-table tbody,
-  .task-table tr,
-  .task-table td {
-    display: block;
-    width: 100%;
-  }
-
-  .task-table tr {
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    margin-bottom: 12px;
-    padding: 4px 0;
-  }
-
-  .task-table tr:last-child {
-    margin-bottom: 0;
-  }
-
-  .task-table td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--line);
-    text-align: right;
-  }
-
-  .task-table td:last-child {
-    border-bottom: none;
-  }
-
-  .task-table td[data-label]::before {
-    content: attr(data-label);
-    font-size: 11.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--ink-soft);
-    text-align: left;
-    flex: 0 0 auto;
-  }
-
-  .task-table td:not([data-label])::before {
-    content: "";
-  }
-}
-
 /* Dashboard */
 .dash-header {
   display: flex;
@@ -357,7 +321,8 @@ label {
 
 .dash-summary {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 10px 18px;
 }
 
 .dash-stat {
@@ -443,6 +408,122 @@ label {
   font-weight: 500;
 }
 
+/* Responsive tables: below the breakpoint, every .task-table becomes a stack of cards instead
+   of a cramped table with wrapping columns. (This block must stay after the base .task-table
+   rules above; at equal specificity the later rule wins, and earlier these lost.) Each <td> needs a data-label attribute (the field
+   name) which renders as a label via ::before — this only affects layout below the breakpoint,
+   so it's inert at desktop widths. */
+@media (max-width: 640px) {
+  /* The cards carry their own border and background, so the table itself drops its frame
+     (otherwise every card sits inside a second box). */
+  .task-table {
+    border: none;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+  }
+
+  .task-table thead {
+    display: none;
+  }
+
+  .task-table,
+  .task-table tbody,
+  .task-table tr,
+  .task-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .task-table tr {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 4px 0;
+  }
+
+  .task-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Dividers go on top of each cell (not the bottom) so hiding an empty last cell never leaves
+     a stray line at the bottom of a card. `white-space: normal !important` overrides the inline
+     nowrap some action cells use on desktop, which otherwise pushed text off the card. */
+  .task-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: none;
+    border-top: 1px solid var(--line);
+    text-align: right;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    min-width: 0;
+  }
+
+  .task-table td:first-child {
+    border-top: none;
+  }
+
+  .task-table td > * {
+    min-width: 0;
+  }
+
+  /* A cell with nothing in it (a blank notes field, an admin-only action for a non-admin)
+     would otherwise render as an empty labelled row. */
+  .task-table td:empty {
+    display: none;
+  }
+
+  .task-table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    text-align: left;
+    flex: 0 0 auto;
+    max-width: 45%;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  /* Unlabelled cells are the action buttons (Edit / Delete / Save…): group them on the right. */
+  .task-table td:not([data-label]) {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .task-table td:not([data-label])::before {
+    content: none;
+  }
+
+  /* Full-width cells (empty-state messages, the expandable category detail) read as normal
+     left-aligned blocks rather than being squeezed into a label/value row. */
+  .task-table td[colspan] {
+    display: block;
+    text-align: left;
+  }
+
+  .task-table .category-detail > td {
+    padding: 12px 14px;
+  }
+
+  .task-table .link-btn {
+    text-align: inherit;
+  }
+
+  /* .task-meta carries paragraph margins, which a cell only picks up once it's a flex box. */
+  .task-table td.task-meta {
+    margin: 0;
+  }
+}
+
 /* Status pills */
 .pill {
   display: inline-flex;
@@ -487,7 +568,13 @@ label {
 .task-detail-header {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.task-detail-header h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .task-meta {
@@ -969,6 +1056,7 @@ label {
 .notif-item p {
   margin: 0 0 4px;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .notif-time {
@@ -1031,7 +1119,9 @@ label {
 .briefing-list li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  overflow-wrap: anywhere;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -1111,5 +1201,178 @@ label {
   .line-item-form input:first-child,
   .line-item-form button {
     grid-column: 1 / -1;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------
+   Phone layout. Everything below only applies on narrow screens or touch devices, so the
+   desktop layout is unchanged.
+   --------------------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .app-content {
+    padding: 18px 16px 32px;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  /* The header is the anchor for the notification panel (see below). */
+  .app-nav {
+    position: relative;
+  }
+
+  /* A long email address shortens with "…" instead of pushing Sign out off the screen. */
+  .app-nav-user {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-nav-user > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-nav-user > button {
+    flex: 0 0 auto;
+  }
+
+  /* Notification panel: on desktop it hangs off the bell, 320px wide, lined up with the bell's
+     right edge. On a phone the bell sits near the left of the header, so that ran off the left
+     edge of the screen. Here it spans the header instead, just inside the screen edges. */
+  .notif-wrap {
+    position: static;
+  }
+
+  .notif-dropdown {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: calc(100% + 4px);
+    max-height: min(70vh, 480px);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .notif-item {
+    padding: 14px 16px;
+  }
+
+  .task-form {
+    padding: 16px;
+  }
+
+  .predecessors {
+    padding: 12px 14px;
+  }
+
+  .budget-card {
+    padding: 12px 14px;
+  }
+
+  .auth-card {
+    padding: 24px 18px;
+  }
+
+  /* The vendor bid form sits inside the auth card; a second box-in-a-box wastes a third of a
+     phone's width. */
+  .auth-card .task-form {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+
+  .dash-header {
+    align-items: center;
+  }
+
+  .dash-header h1 {
+    margin-bottom: 0;
+  }
+
+  .stat-tiles {
+    gap: 10px;
+  }
+
+  .stat-tile {
+    padding: 14px;
+  }
+
+  .project-card-footer {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .invoice-detail-head > div {
+    min-width: 0;
+    flex: 1 1 220px;
+  }
+}
+
+/* Timeline: a narrower task-name column on phones leaves more of the chart visible. */
+@media (max-width: 480px) {
+  .gantt-sidebar {
+    width: 140px;
+  }
+
+  .gantt-sidebar-row {
+    padding: 0 10px;
+  }
+}
+
+/* iOS zooms the whole page in when you tap a field whose text is smaller than 16px, and
+   doesn't zoom back out. 16px on phones/touch screens prevents that. */
+@media (max-width: 720px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* iOS Safari only: its native date field ignores width and collapses when empty. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"] {
+    -webkit-appearance: none;
+    min-height: 2.6em;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+  }
+}
+
+/* Touch screens: finger-sized tap targets. */
+@media (pointer: coarse) {
+  button:not(.link-btn):not(.notif-bell):not(.stat-tile) {
+    min-height: 40px;
+  }
+
+  .notif-bell {
+    padding: 8px 10px;
+  }
+
+  .nav-toggle {
+    min-width: 42px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+
+  .predecessor-option {
+    padding: 8px 0;
+  }
+
+  .task-table .link-btn {
+    padding: 6px 0;
+  }
+
+  .sub-nav a {
+    padding: 6px 0;
   }
 }
