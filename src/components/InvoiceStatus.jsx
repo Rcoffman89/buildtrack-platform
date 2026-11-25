@@ -57,13 +57,19 @@ export default function InvoiceStatus({ invoice, onChanged, onError }) {
           </button>
         </span>
       )}
-      {invoice.qb_exported_at && (
+      {invoice.qb_exported_at ? (
         <span>
           <span className="pill pill-none">In QuickBooks</span>{" "}
           <button className="link-btn" onClick={unmarkExported}>
             Unmark
           </button>
         </span>
+      ) : (
+        // For bills keyed into QuickBooks by hand (e.g. QuickBooks Desktop, which has no bill
+        // file import): marks it so the export leaves it out.
+        <button className="link-btn" onClick={() => update({ qb_exported_at: new Date().toISOString() })}>
+          Mark in QuickBooks
+        </button>
       )}
     </div>
   );
